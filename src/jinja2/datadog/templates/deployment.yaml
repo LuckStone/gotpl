@@ -1,0 +1,101 @@
+{%- if Values.deployment.enabled %}
+{%- if Values.datadog.apiKey %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.datadog__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.deployment.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.datadog__fullname() }}
+      name: {{ self.datadog__fullname() }}
+    spec:
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}
+        ports:
+        - containerPort: 8125
+          name: dogstatsdport
+          protocol: UDP
+        {%- if Values.datadog.apmEnabled %}
+        - containerPort: 8126
+          name: traceport
+          protocol: TCP
+        {%- endif %}
+        env:
+          - name: API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ self.datadog__fullname() }}
+                key: api-key
+          - name: LOG_LEVEL
+            value: {{ Values.datadog.logLevel | quote() }}
+          - name: SD_BACKEND
+            value: docker
+          - name: NON_LOCAL_TRAFFIC
+            value: {{ Values.datadog.nonLocalTraffic | default("", true) | quote() }}
+          - name: TAGS
+            value: {{ Values.datadog.tags | default("", true) | quote() }}
+          - name: DD_APM_ENABLED
+            value: {{ Values.datadog.apmEnabled | default("", true) | quote() }}
+          - name: KUBERNETES
+            value: "yes"
+          {%- if Values.datadog.collectEvents %}
+          - name: KUBERNETES_COLLECT_EVENTS
+            value: "yes"
+          {%- endif %}
+{%- if Values.datadog.env %}
+{{ toYaml(Values.datadog.env) | indent(10) }}
+{%- endif %}
+        volumeMounts:
+          - name: dockersocket
+            mountPath: /var/run/docker.sock
+          - name: procdir
+            mountPath: /host/proc
+            readOnly: true
+          - name: cgroups
+            mountPath: /host/sys/fs/cgroup
+            readOnly: true
+          - name: confd
+            mountPath: /conf.d
+            readOnly: true
+          - name: autoconf
+            mountPath: /etc/dd-agent/conf.d/auto_conf
+            readOnly: true
+          - name: checksd
+            mountPath: /checks.d
+            readOnly: true
+{%- if Values.datadog.volumeMounts %}
+{{ toYaml(Values.datadog.volumeMounts) | indent(10) }}
+{%- endif %}
+      volumes:
+        - hostPath:
+            path: /var/run/docker.sock
+          name: dockersocket
+        - hostPath:
+            path: /proc
+          name: procdir
+        - hostPath:
+            path: /sys/fs/cgroup
+          name: cgroups
+        - name: confd
+          configMap:
+            name: {{ self.datadog__confd__fullname() }}
+        - name: checksd
+          configMap:
+            name: {{ self.datadog__checksd__fullname() }}
+        - name: autoconf
+          configMap:
+            name: {{ self.datadog__autoconf__fullname() }}
+{%- if Values.datadog.volumes %}
+{{ toYaml(Values.datadog.volumes) | indent(8) }}
+{%- endif %}
+{%- endif %}
+{%- endif %}

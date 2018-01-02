@@ -1,0 +1,211 @@
+{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.server.masterKey %}
+  master-key: {{ Values.server.masterKey | b64enc() | quote() }}
+  {%- else %}
+  master-key: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  {%- if Values.dashboard.enabled %}
+  {%- if Values.dashboard.password %}
+  parse-dashboard-password: {{ Values.dashboard.password | b64enc() | quote() }}
+  {%- else %}
+  parse-dashboard-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  {%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerIP: {{ Values.loadBalancerIP | quote() }}
+  {%- endif %}
+  ports:
+  - name: server-http
+    port: {{ Values.server.port }}
+    targetPort: server-http
+  - name: dashboard-http
+    port: 80
+    targetPort: dashboard-http
+  selector:
+    app: {{ self.name() }}
+    release: "{{ Release.Name }}"
+#---{%- if (self.host()) and Values.dashboard.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}-dashboard
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+    component: "dashboard"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.name() }}
+        release: "{{ Release.Name }}"
+        component: "dashboard"
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.dashboard.image }}"
+        imagePullPolicy: {{ Values.dashboard.imagePullPolicy | quote() }}
+        env:
+        - name: PARSE_DASHBOARD_USER
+          value: {{ Values.dashboard.username }}
+        - name: PARSE_DASHBOARD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: parse-dashboard-password
+        - name: PARSE_HOST
+          value: {{ self.host()  | quote() }}
+        - name: PARSE_PORT_NUMBER
+          value: {{ Values.server.port | quote() }}
+        - name: PARSE_APP_ID
+          value: {{ Values.server.appId | quote() }}
+        - name: PARSE_MASTER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: master-key
+        - name: PARSE_DASHBOARD_APP_NAME
+          value: {{ Values.dashboard.appName | quote() }}
+        ports:
+        - name: dashboard-http
+          containerPort: 4040
+        livenessProbe:
+          httpGet:
+            path: /
+            port: dashboard-http
+          initialDelaySeconds: 240
+        readinessProbe:
+          httpGet:
+            path: /
+            port: dashboard-http
+          initialDelaySeconds: 30
+        resources:
+{{ toYaml(Values.dashboard.resources) | indent(10) }}
+        volumeMounts:
+        - name: parse-dashboard-data
+          mountPath: /bitnami/parse-dashboard
+      volumes:
+      - name: parse-dashboard-data
+        emptyDir: {}
+{%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}-server
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+    component: "server"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.name() }}
+        release: "{{ Release.Name }}"
+        component: "server"
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.server.image }}"
+        imagePullPolicy: {{ Values.server.imagePullPolicy | quote() }}
+        env:
+        - name: PARSE_HOST
+          value: "0.0.0.0"
+        - name: PARSE_PORT_NUMBER
+          value: {{ Values.server.port | quote() }}
+        - name: PARSE_MOUNT_PATH
+          value: {{ Values.server.mountPath | quote() }}
+        - name: PARSE_APP_ID
+          value: {{ Values.server.appId | quote() }}
+        - name: PARSE_MASTER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: master-key
+        - name: MONGODB_HOST
+          value: {{ self.mongodb__fullname() }}
+        - name: MONGODB_PORT
+          value: "27017"
+        ports:
+        - name: server-http
+          containerPort: {{ Values.server.port }}
+        livenessProbe:
+          httpGet:
+            path: {{ Values.server.mountPath }}/users
+            port: server-http
+            httpHeaders:
+            - name: X-Parse-Application-Id
+              value: {{ Values.server.appId }}
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: {{ Values.server.mountPath }}/users
+            port: server-http
+            httpHeaders:
+            - name: X-Parse-Application-Id
+              value: {{ Values.server.appId }}
+          initialDelaySeconds: 30
+        resources:
+{{ toYaml(Values.server.resources) | indent(10) }}
+        volumeMounts:
+        - name: parse-data
+          mountPath: /bitnami/parse
+      volumes:
+      - name: parse-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}

@@ -1,0 +1,445 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.selenium__hub__fullname() }}
+  labels:
+    app: {{ self.selenium__hub__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- if Values.hub.serviceAnnotations %}
+  annotations:
+{{ toYaml(Values.hub.serviceAnnotations) | indent(4) }}
+{%- endif %}
+spec:
+  type: {{ Values.hub.serviceType | quote() }}
+  sessionAffinity: {{ Values.hub.serviceSessionAffinity | quote() }}
+  ports:
+  - name: hub
+    port: {{ Values.hub.port }}
+    targetPort: {{ Values.hub.port }}
+  selector:
+    app: {{ self.selenium__hub__fullname() }}
+#---{%- if true==Values.chrome.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.selenium__chrome__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.chrome.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.selenium__chrome__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+      annotations: 
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.chrome.image }}:{{ Values.chrome.tag }}"
+          imagePullPolicy: {{ Values.chrome.pullPolicy }}
+          ports:
+            {%- if Values.hub.jmxPort %}
+            - containerPort: {{ Values.hub.jmxPort }}
+              name: jmx
+              protocol: TCP
+            {%- endif %}
+          env:
+            - name: HUB_PORT_4444_TCP_ADDR
+              value: {{ self.selenium__hub__fullname() }}
+            - name: HUB_PORT_4444_TCP_PORT
+              value: {{ Values.hub.port | quote() }}
+            - name: JAVA_OPTS
+              value: {{ Values.chrome.javaOpts | default("", true) | quote() }}
+            - name: SE_OPTS
+              value: {{ Values.chrome.seOpts | default("", true) | quote() }}
+            {%- if Values.chrome.chromeVersion %}
+            - name: CHROME_VERSION
+              value: {{ Values.chrome.chromeVersion | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodeMaxInstances %}
+            - name: NODE_MAX_INSTANCES
+              value: {{ Values.chrome.nodeMaxInstances | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodeMaxSession %}
+            - name: NODE_MAX_SESSION
+              value: {{ Values.chrome.nodeMaxSession | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodeRegisterCycle %}
+            - name: NODE_REGISTER_CYCLE
+              value: {{ Values.chrome.nodeRegisterCycle | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodePort %}
+            - name: NODE_PORT
+              value: {{ Values.chrome.nodePort | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.screenWidth %}
+            - name: SCREEN_WIDTH
+              value: {{ Values.chrome.screenWidth | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.screenHeight %}
+            - name: SCREEN_HEIGHT
+              value: {{ Values.chrome.screenHeight | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.screenDepth %}
+            - name: SCREEN_DEPTH
+              value: {{ Values.chrome.screenDepth | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.display %}
+            - name: DISPLAY
+              value: {{ Values.chrome.display | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.timeZone %}
+            - name: TZ
+              value: {{ Values.chrome.timeZone | quote() }}
+            {%- endif %}
+          volumeMounts:
+{%- if Values.chrome.volumeMounts -%}
+{{ toYaml(Values.chrome.volumeMounts) | indent(12) }}
+{%- endif %}
+          resources:
+{{ toYaml(Values.chrome.resources) | indent(12) }}
+      volumes:
+{%- if Values.chrome.volumes -%}
+{{ toYaml(Values.chrome.volumes) | indent(8) }}
+{%- endif -%}
+{%- endif -%}
+#---{%- if true==Values.chromeDebug.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.selenium__chromeDebug__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.chromeDebug.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.selenium__chromeDebug__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+      annotations: 
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.chromeDebug.image }}:{{ Values.chromeDebug.tag }}"
+          imagePullPolicy: {{ Values.chromeDebug.pullPolicy }}
+          ports:
+            {%- if Values.hub.jmxPort %}
+            - containerPort: {{ Values.hub.jmxPort }}
+              name: jmx
+              protocol: TCP
+            {%- endif %}
+            - containerPort: 5900 
+              name: vnc
+          env:
+            - name: HUB_PORT_4444_TCP_ADDR
+              value: {{ self.selenium__hub__fullname() }}
+            - name: HUB_PORT_4444_TCP_PORT
+              value: {{ Values.hub.port | quote() }}
+            - name: JAVA_OPTS
+              value: {{ Values.chromeDebug.javaOpts | default("", true) | quote() }}
+            - name: SE_OPTS
+              value: {{ Values.chromeDebug.seOpts | default("", true) | quote() }}
+            {%- if Values.chromeDebug.chromeVersion %}
+            - name: CHROME_VERSION
+              value: {{ Values.chromeDebug.chromeVersion | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.nodeMaxInstances %}
+            - name: NODE_MAX_INSTANCES
+              value: {{ Values.chromeDebug.nodeMaxInstances | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.nodeMaxSession %}
+            - name: NODE_MAX_SESSION
+              value: {{ Values.chromeDebug.nodeMaxSession | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.nodeRegisterCycle %}
+            - name: NODE_REGISTER_CYCLE
+              value: {{ Values.chromeDebug.nodeRegisterCycle | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.nodePort %}
+            - name: NODE_PORT
+              value: {{ Values.chromeDebug.nodePort | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.screenWidth %}
+            - name: SCREEN_WIDTH
+              value: {{ Values.chromeDebug.screenWidth | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.screenHeight %}
+            - name: SCREEN_HEIGHT
+              value: {{ Values.chromeDebug.screenHeight | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.screenDepth %}
+            - name: SCREEN_DEPTH
+              value: {{ Values.chromeDebug.screenDepth | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.display %}
+            - name: DISPLAY
+              value: {{ Values.chromeDebug.display | quote() }}
+            {%- endif %}
+            {%- if Values.chromeDebug.timeZone %}
+            - name: TZ
+              value: {{ Values.chromeDebug.timeZone | quote() }}
+            {%- endif %}
+          volumeMounts:
+{%- if Values.chromeDebug.volumeMounts -%}
+{{ toYaml(Values.chromeDebug.volumeMounts) | indent(12) }}
+{%- endif %}
+          resources:
+{{ toYaml(Values.chromeDebug.resources) | indent(12) }}
+      volumes:
+{%- if Values.chromeDebug.volumes -%}
+{{ toYaml(Values.chromeDebug.volumes) | indent(8) }}
+{%- endif -%}
+{%- endif -%}
+#---{%- if true==Values.firefox.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.selenium__firefox__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.firefox.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.selenium__firefox__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+      annotations: 
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.firefox.image }}:{{ Values.firefox.tag }}"
+          imagePullPolicy: {{ Values.firefox.pullPolicy }}
+          ports:
+            {%- if Values.hub.jmxPort %}
+            - containerPort: {{ Values.hub.jmxPort }}
+              name: jmx
+              protocol: TCP
+            {%- endif %}
+          env:
+            - name: HUB_PORT_4444_TCP_ADDR
+              value: {{ self.selenium__hub__fullname() }}
+            - name: HUB_PORT_4444_TCP_PORT
+              value: {{ Values.hub.port | quote() }}
+            - name: JAVA_OPTS
+              value: {{ Values.firefox.javaOpts | default("", true) | quote() }}
+            - name: SE_OPTS
+              value: {{ Values.firefox.seOpts | default("", true) | quote() }}
+            {%- if Values.firefox.firefoxVersion %}
+            - name: FIREFOX_VERSION
+              value: {{ Values.firefox.firefoxVersion | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodeMaxInstances %}
+            - name: NODE_MAX_INSTANCES
+              value: {{ Values.firefox.nodeMaxInstances | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodeMaxSession %}
+            - name: NODE_MAX_SESSION
+              value: {{ Values.firefox.nodeMaxSession | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodeRegisterCycle %}
+            - name: NODE_REGISTER_CYCLE
+              value: {{ Values.firefox.nodeRegisterCycle | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodePort %}
+            - name: NODE_PORT
+              value: {{ Values.firefox.nodePort | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.screenWidth %}
+            - name: SCREEN_WIDTH
+              value: {{ Values.firefox.screenWidth | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.screenHeight %}
+            - name: SCREEN_HEIGHT
+              value: {{ Values.firefox.screenHeight | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.screenDepth %}
+            - name: SCREEN_DEPTH
+              value: {{ Values.firefox.screenDepth | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.display %}
+            - name: DISPLAY
+              value: {{ Values.firefox.display | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.timeZone %}
+            - name: TZ
+              value: {{ Values.firefox.timeZone | quote() }}
+            {%- endif %}
+          resources:
+{{ toYaml(Values.firefox.resources) | indent(12) }}
+{%- endif -%}
+#---{%- if true==Values.firefoxDebug.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.selenium__firefoxDebug__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.firefoxDebug.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.selenium__firefoxDebug__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+      annotations: 
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.firefoxDebug.image }}:{{ Values.firefoxDebug.tag }}"
+          imagePullPolicy: {{ Values.firefoxDebug.pullPolicy }}
+          ports:
+            {%- if Values.firefoxDebug.jmxPort %}
+            - containerPort: {{ Values.firefoxDebug.jmxPort }}
+              name: jmx
+              protocol: TCP
+            {%- endif %}
+            - containerPort: 5900 
+              name: vnc
+          env:
+            - name: HUB_PORT_4444_TCP_ADDR
+              value: {{ self.selenium__hub__fullname() }}
+            - name: HUB_PORT_4444_TCP_PORT
+              value: {{ Values.hub.port | quote() }}
+            - name: JAVA_OPTS
+              value: {{ Values.firefoxDebug.javaOpts | default("", true) | quote() }}
+            - name: SE_OPTS
+              value: {{ Values.firefoxDebug.seOpts | default("", true) | quote() }}
+            {%- if Values.firefoxDebug.firefoxVersion %}
+            - name: FIREFOX_VERSION
+              value: {{ Values.firefoxDebug.firefoxVersion | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.nodeMaxInstances %}
+            - name: NODE_MAX_INSTANCES
+              value: {{ Values.firefoxDebug.nodeMaxInstances | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.nodeMaxSession %}
+            - name: NODE_MAX_SESSION
+              value: {{ Values.firefoxDebug.nodeMaxSession | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.nodeRegisterCycle %}
+            - name: NODE_REGISTER_CYCLE
+              value: {{ Values.firefoxDebug.nodeRegisterCycle | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.nodePort %}
+            - name: NODE_PORT
+              value: {{ Values.firefoxDebug.nodePort | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.screenWidth %}
+            - name: SCREEN_WIDTH
+              value: {{ Values.firefoxDebug.screenWidth | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.screenHeight %}
+            - name: SCREEN_HEIGHT
+              value: {{ Values.firefoxDebug.screenHeight | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.screenDepth %}
+            - name: SCREEN_DEPTH
+              value: {{ Values.firefoxDebug.screenDepth | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.display %}
+            - name: DISPLAY
+              value: {{ Values.firefoxDebug.display | quote() }}
+            {%- endif %}
+            {%- if Values.firefoxDebug.timeZone %}
+            - name: TZ
+              value: {{ Values.firefoxDebug.timeZone | quote() }}
+            {%- endif %}
+          resources:
+{{ toYaml(Values.firefoxDebug.resources) | indent(12) }}
+{%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.selenium__hub__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.selenium__hub__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+      annotations: 
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.hub.image }}:{{ Values.hub.tag }}"
+          imagePullPolicy: {{ Values.hub.pullPolicy }}
+          ports:
+            {%- if Values.hub.jmxPort %}
+            - containerPort: {{ Values.hub.jmxPort }}
+              name: jmx
+              protocol: TCP
+            {%- endif %}
+            - containerPort: {{ Values.hub.port }}
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /grid/console
+              port: {{ Values.hub.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /grid/console
+              port: {{ Values.hub.port }}
+            timeoutSeconds: {{ Values.hub.readinessTimeout }}
+          env:
+            - name: JAVA_OPTS
+              value: {{ Values.hub.javaOpts | default("", true) | quote() }}
+            - name: SE_OPTS
+              value: {{ Values.hub.seOpts | default("", true) | quote() }}
+            {%- if Values.hub.gridNewSessionWaitTimeout %}
+            - name: GRID_NEW_SESSION_WAIT_TIMEOUT
+              value: {{ Values.hub.gridNewSessionWaitTimeout | quote() }}
+            {%- endif %}
+            {%- if Values.hub.gridJettyMaxThreads %}
+            - name: GRID_JETTY_MAX_THREADS
+              value: {{ Values.hub.gridNewSessionWaitTimeout | quote() }}
+            {%- endif %}
+            {%- if Values.hub.gridNodePolling %}
+            - name: GRID_NODE_POLLING
+              value: {{ Values.hub.gridNodePolling | quote() }}
+            {%- endif %}
+            {%- if Values.hub.gridCleanUpCycle %}
+            - name: GRID_CLEANUP_CYCLE
+              value: {{ Values.hub.gridCleanUpCycle | quote() }}
+            {%- endif %}
+            {%- if Values.hub.gridTimeout %}
+            - name: GRID_TIMEOUT
+              value: {{ Values.hub.gridTimeout | quote() }}
+            {%- endif %}
+            {%- if Values.hub.gridBrowserTimeout %}
+            - name: GRID_BROWSER_TIMEOUT
+              value: {{ Values.hub.gridBrowserTimeout | quote() }}
+            {%- endif %}
+            {%- if Values.hub.gridMaxSession %}
+            - name: GRID_MAX_SESSION
+              value: {{ Values.hub.gridMaxSession | quote() }}
+            {%- endif %}
+            {%- if Values.hub.gridUnregisterIfStillDownAfer %}
+            - name: GRID_UNREGISTER_IF_STILL_DOWN_AFTER
+              value: {{ Values.hub.gridUnregisterIfStillDownAfer | quote() }}
+            {%- endif %}
+            {%- if Values.hub.timeZone %}
+            - name: TZ
+              value: {{ Values.hub.timeZone | quote() }}
+            {%- endif %}
+          resources:
+{{ toYaml(Values.hub.resources) | indent(12) }}

@@ -1,0 +1,724 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - endpoints
+      - nodes
+      - pods
+      - secrets
+    verbs:
+      - list
+      - watch
+{%- if Values.controller.scope.enabled and Values.controller.scope.namespace %}
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    resourceNames:
+      - "{{ Values.controller.scope.namespace }}"
+    verbs:
+      - get
+{%- endif %}
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - get
+      - list
+      - update
+      - watch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+{%- endif -%}
+#---apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.controller__fullname() }}
+data:
+  enable-vts-status: "{{ Values.controller.stats.enabled }}"
+{%- if Values.controller.config %}
+{{ toYaml(Values.controller.config) | indent(2) }}
+{%- endif %}
+#---{%- if Values.tcp %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}-tcp
+data:
+{{ toYaml(Values.tcp) | indent(2) }}
+{%- endif %}
+#---{%- if Values.udp %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}-udp
+data:
+{{ toYaml(Values.udp) | indent(2) }}
+{%- endif %}
+#---{%- if Values.controller.kind=="DaemonSet" %}
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.controller__fullname() }}
+spec:
+  template:
+    metadata:
+      annotations:
+        checksum/config: ""
+    {%- if Values.controller.podAnnotations %}
+{{ toYaml(Values.controller.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.name() }}
+        component: "{{ Values.controller.name }}"
+        release: {{ Release.Name }}
+    spec:
+      containers:
+        - name: {{ self.name() }}-{{ Values.controller.name }}
+          image: "{{ Values.controller.image.repository }}:{{ Values.controller.image.tag }}"
+          imagePullPolicy: "{{ Values.controller.image.pullPolicy }}"
+          args:
+            - /nginx-ingress-controller
+            - --default-backend-service={%- if Values.defaultBackend.enabled %}{{ Release.Namespace }}/{{ self.defaultBackend__fullname() }}{%- else %}{{ Values.controller.defaultBackendService }}{%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) and Values.controller.publishService.enabled %}
+            - --publish-service={{ self.controller__publishServicePath() }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --election-id={{ Values.controller.electionID }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --ingress-class={{ Values.controller.ingressClass }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --configmap={{ Release.Namespace }}/{{ self.controller__fullname() }}
+          {%- else %}
+            - --nginx-configmap={{ Release.Namespace }}/{{ self.controller__fullname() }}
+          {%- endif %}
+          {%- if Values.tcp %}
+            - --tcp-services-configmap={{ Release.Namespace }}/{{ self.fullname() }}-tcp
+          {%- endif %}
+          {%- if Values.udp %}
+            - --udp-services-configmap={{ Release.Namespace }}/{{ self.fullname() }}-udp
+          {%- endif %}
+          {%- if Values.controller.scope.enabled %}
+            - --watch-namespace={{ Values.controller.scope.namespace | default(Release.Namespace, true) }}
+          {%- endif %}
+          {%- for key, value in Values.controller.extraArgs.iteritems() %}
+            {%- if value %}
+            - --{{ key }}={{ value }}
+            {%- else %}
+            - --{{ key }}
+            {%- endif %}
+          {%- endfor %}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 10
+            timeoutSeconds: 1
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          {%- if Values.controller.stats.enabled %}
+            - name: stats
+              containerPort: 18080
+              protocol: TCP
+          {%- endif %}
+          {%- for key, value in Values.tcp.iteritems() %}
+            - name: "{{ key }}-tcp"
+              containerPort: {{ key }}
+              protocol: TCP
+          {%- endfor %}
+          {%- for key, value in Values.udp.iteritems() %}
+            - name: "{{ key }}-udp"
+              containerPort: {{ key }}
+              protocol: UDP
+          {%- endfor %}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+          resources:
+{{ toYaml(Values.controller.resources) | indent(12) }}
+      {%- if Values.controller.stats.enabled %}
+        - name: {{ self.name() }}-{{ Values.statsExporter.name }}
+          image: "{{ Values.statsExporter.image.repository }}:{{ Values.statsExporter.image.tag }}"
+          imagePullPolicy: "{{ Values.statsExporter.image.pullPolicy }}"
+          env:
+            - name: METRICS_ADDR
+              value: ":9913"
+            - name: METRICS_ENDPOINT
+              value: "{{ Values.statsExporter.endpoint }}"
+            - name: METRICS_NS
+              value: "{{ Values.statsExporter.metricsNamespace }}"
+            - name: NGINX_STATUS
+              value: "{{ Values.statsExporter.statusPage }}"
+          ports:
+            - name: metrics
+              containerPort: 9913
+              protocol: TCP
+          resources:
+{{ toYaml(Values.statsExporter.resources) | indent(12) }}
+      {%- endif %}
+      hostNetwork: {{ Values.controller.hostNetwork }}
+    {%- if Values.controller.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.controller.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.controller.tolerations %}
+      tolerations:
+{{ toYaml(Values.controller.tolerations) | indent(8) }}
+    {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      terminationGracePeriodSeconds: 60
+{%- endif %}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ self.fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - namespaces
+      - pods
+      - secrets
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - {{ Values.controller.electionID }}-{{ Values.controller.ingressClass }}
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    verbs:
+      - create
+      - get
+      - update
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+{%- endif -%}
+#---{%- if Values.controller.stats.enabled %}
+apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.statsExporter.service.annotations %}
+  annotations:
+{{ toYaml(Values.statsExporter.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.controller__fullname() }}-metrics
+spec:
+  clusterIP: "{{ Values.statsExporter.service.clusterIP }}"
+{%- if Values.statsExporter.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.statsExporter.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.statsExporter.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.statsExporter.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.statsExporter.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.statsExporter.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - name: metrics
+      port: {{ Values.statsExporter.service.servicePort }}
+      targetPort: 9913
+  selector:
+    app: {{ self.name() }}
+    component: "{{ Values.controller.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.statsExporter.service.type }}"
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.controller.service.annotations %}
+  annotations:
+{{ toYaml(Values.controller.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.controller__fullname() }}
+spec:
+  clusterIP: "{{ Values.controller.service.clusterIP }}"
+{%- if Values.controller.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.controller.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.controller.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.controller.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.controller.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.controller.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+{%- if (Capabilities.KubeVersion.Minor>="7") and (Values.controller.service.externalTrafficPolicy) %}
+  externalTrafficPolicy: "{{ Values.controller.service.externalTrafficPolicy }}"
+{%- endif %}
+{%- if (Capabilities.KubeVersion.Minor>="7") and (Values.controller.service.healthCheckNodePort) %}
+  healthCheckNodePort: {{ Values.controller.service.healthCheckNodePort }}
+{%- endif %}
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: {{ Values.controller.service.targetPorts.http }}
+      {%- if ((Values.controller.service.type=="NodePort") and ( not  ( empty  Values.controller.service.nodePorts.http))) %}
+      nodePort: {{ Values.controller.service.nodePorts.http }}
+      {%- endif %}
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: {{ Values.controller.service.targetPorts.https }}
+      {%- if ((Values.controller.service.type=="NodePort") and ( not  ( empty  Values.controller.service.nodePorts.https))) %}
+      nodePort: {{ Values.controller.service.nodePorts.https }}
+      {%- endif %}
+  {%- for key, value in Values.tcp.iteritems() %}
+    - name: "{{ key }}-tcp"
+      port: {{ key }}
+      protocol: TCP
+      targetPort: {{ key }}
+  {%- endfor %}
+  {%- for key, value in Values.udp.iteritems() %}
+    - name: "{{ key }}-udp"
+      port: {{ key }}
+      protocol: UDP
+      targetPort: {{ key }}
+  {%- endfor %}
+  selector:
+    app: {{ self.name() }}
+    component: "{{ Values.controller.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.controller.service.type }}"
+#---{%- if Values.controller.stats.enabled %}
+apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.controller.stats.service.annotations %}
+  annotations:
+{{ toYaml(Values.controller.stats.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.controller__fullname() }}-stats
+spec:
+  clusterIP: "{{ Values.controller.stats.service.clusterIP }}"
+{%- if Values.controller.stats.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.controller.stats.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.controller.stats.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.controller.stats.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.controller.stats.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.controller.stats.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - name: stats
+      port: {{ Values.controller.stats.service.servicePort }}
+      targetPort: 18080
+  selector:
+    app: {{ self.name() }}
+    component: "{{ Values.controller.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.controller.stats.service.type }}"
+{%- endif %}
+#---{%- if Values.defaultBackend.enabled %}
+apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.defaultBackend.service.annotations %}
+  annotations:
+{{ toYaml(Values.defaultBackend.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.defaultBackend.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.defaultBackend__fullname() }}
+spec:
+  clusterIP: "{{ Values.defaultBackend.service.clusterIP }}"
+{%- if Values.defaultBackend.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.defaultBackend.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.defaultBackend.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.defaultBackend.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.defaultBackend.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.defaultBackend.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - port: {{ Values.defaultBackend.service.servicePort }}
+      targetPort: 8080
+  selector:
+    app: {{ self.name() }}
+    component: "{{ Values.defaultBackend.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.defaultBackend.service.type }}"
+{%- endif %}
+#---{%- if Values.controller.kind=="Deployment" %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.controller__fullname() }}
+spec:
+  replicas: {{ Values.controller.replicaCount }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: ""
+      {%- if Values.controller.podAnnotations %}
+{{ toYaml(Values.controller.podAnnotations) | indent(8) }}
+      {%- endif %}
+      labels:
+        app: {{ self.name() }}
+        component: "{{ Values.controller.name }}"
+        release: {{ Release.Name }}
+        {%- if Values.controller.podLabels %}
+{{ toYaml(Values.controller.podLabels) | indent(8) }}
+        {%- endif %}
+    spec:
+      containers:
+        - name: {{ self.name() }}-{{ Values.controller.name }}
+          image: "{{ Values.controller.image.repository }}:{{ Values.controller.image.tag }}"
+          imagePullPolicy: "{{ Values.controller.image.pullPolicy }}"
+          args:
+            - /nginx-ingress-controller
+            - --default-backend-service={%- if Values.defaultBackend.enabled %}{{ Release.Namespace }}/{{ self.defaultBackend__fullname() }}{%- else %}{{ Values.controller.defaultBackendService }}{%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) and Values.controller.publishService.enabled %}
+            - --publish-service={{ self.controller__publishServicePath() }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --election-id={{ Values.controller.electionID }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --ingress-class={{ Values.controller.ingressClass }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --configmap={{ Release.Namespace }}/{{ self.controller__fullname() }}
+          {%- else %}
+            - --nginx-configmap={{ Release.Namespace }}/{{ self.controller__fullname() }}
+          {%- endif %}
+          {%- if Values.tcp %}
+            - --tcp-services-configmap={{ Release.Namespace }}/{{ self.fullname() }}-tcp
+          {%- endif %}
+          {%- if Values.udp %}
+            - --udp-services-configmap={{ Release.Namespace }}/{{ self.fullname() }}-udp
+          {%- endif %}
+          {%- if Values.controller.scope.enabled %}
+            - --watch-namespace={{ Values.controller.scope.namespace | default(Release.Namespace, true) }}
+          {%- endif %}
+          {%- for key, value in Values.controller.extraArgs.iteritems() %}
+            {%- if value %}
+            - --{{ key }}={{ value }}
+            {%- else %}
+            - --{{ key }}
+            {%- endif %}
+          {%- endfor %}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 10
+            timeoutSeconds: 1
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          {%- if Values.controller.stats.enabled %}
+            - name: stats
+              containerPort: 18080
+              protocol: TCP
+          {%- endif %}
+          {%- for key, value in Values.tcp.iteritems() %}
+            - name: "{{ key }}-tcp"
+              containerPort: {{ key }}
+              protocol: TCP
+          {%- endfor %}
+          {%- for key, value in Values.udp.iteritems() %}
+            - name: "{{ key }}-udp"
+              containerPort: {{ key }}
+              protocol: UDP
+          {%- endfor %}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+          resources:
+{{ toYaml(Values.controller.resources) | indent(12) }}
+      {%- if Values.controller.stats.enabled %}
+        - name: {{ self.name() }}-{{ Values.statsExporter.name }}
+          image: "{{ Values.statsExporter.image.repository }}:{{ Values.statsExporter.image.tag }}"
+          imagePullPolicy: "{{ Values.statsExporter.image.pullPolicy }}"
+          env:
+            - name: METRICS_ADDR
+              value: ":9913"
+            - name: METRICS_ENDPOINT
+              value: "{{ Values.statsExporter.endpoint }}"
+            - name: METRICS_NS
+              value: "{{ Values.statsExporter.metricsNamespace }}"
+            - name: NGINX_STATUS
+              value: "{{ Values.statsExporter.statusPage }}"
+          ports:
+            - name: metrics
+              containerPort: 9913
+              protocol: TCP
+          resources:
+{{ toYaml(Values.statsExporter.resources) | indent(12) }}
+      {%- endif %}
+      hostNetwork: {{ Values.controller.hostNetwork }}
+    {%- if Values.controller.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.controller.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.controller.tolerations %}
+      tolerations:
+{{ toYaml(Values.controller.tolerations) | indent(8) }}
+    {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      terminationGracePeriodSeconds: 60
+{%- endif %}
+#---{%- if Values.defaultBackend.enabled %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.defaultBackend.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.defaultBackend__fullname() }}
+spec:
+  replicas: {{ Values.defaultBackend.replicaCount }}
+  template:
+    metadata:
+    {%- if Values.defaultBackend.podAnnotations %}
+      annotations:
+{{ toYaml(Values.defaultBackend.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.name() }}
+        component: "{{ Values.defaultBackend.name }}"
+        release: {{ Release.Name }}
+        {%- if Values.defaultBackend.podLabels %}
+{{ toYaml(Values.defaultBackend.podLabels) | indent(8) }}
+        {%- endif %}
+    spec:
+      containers:
+        - name: {{ self.name() }}-{{ Values.defaultBackend.name }}
+          image: "{{ Values.defaultBackend.image.repository }}:{{ Values.defaultBackend.image.tag }}"
+          imagePullPolicy: "{{ Values.defaultBackend.image.pullPolicy }}"
+          args:
+          {%- for key, value in Values.defaultBackend.extraArgs.iteritems() %}
+            {%- if value %}
+            - --{{ key }}={{ value }}
+            {%- else %}
+            - --{{ key }}
+            {%- endif %}
+          {%- endfor %}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          resources:
+{{ toYaml(Values.defaultBackend.resources) | indent(12) }}
+    {%- if Values.defaultBackend.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.defaultBackend.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.defaultBackend.tolerations %}
+      tolerations:
+{{ toYaml(Values.defaultBackend.tolerations) | indent(8) }}
+    {%- endif %}
+      terminationGracePeriodSeconds: 60
+{%- endif %}

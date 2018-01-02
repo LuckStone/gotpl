@@ -1,0 +1,604 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.concourse__concourse__fullname() }}
+  labels:
+    app: {{ self.concourse__concourse__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+data:
+  postgresql-host: {{ self.concourse__postgresql__fullname() }}
+  postgresql-database: {{ Values.postgresql.postgresDatabase | quote() }}
+  concourse-atc-port: {{ Values.concourse.atcPort | quote() }}
+  concourse-tsa-host: {{ self.concourse__web__fullname() }}
+  concourse-tsa-port: {{ Values.concourse.tsaPort | quote() }}
+  concourse-allow-self-signed-certificates: {{ Values.concourse.allowSelfSignedCertificates | quote() }}
+  concourse-auth-duration: {{ Values.concourse.authDuration | quote() }}
+  concourse-resource-checking-interval: {{ Values.concourse.resourceCheckingInterval | quote() }}
+  concourse-old-resource-grace-period: {{ Values.concourse.oldResourceGracePeriod | quote() }}
+  concourse-resource-cache-cleanup-interval: {{ Values.concourse.resourceCacheCleanupInterval | quote() }}
+  concourse-external-url: {{ Values.concourse.externalURL | default("", true) | quote() }}
+  concourse-baggageclaim-driver: {{ Values.concourse.baggageclaimDriver | quote() }}
+  garden-docker-registry: {{ Values.concourse.dockerRegistry | default("", true) | quote() }}
+  garden-insecure-docker-registry: {{ Values.concourse.insecureDockerRegistry | default("", true) | quote() }}
+  github-auth-organization: {{ Values.concourse.githubAuthOrganization | default("", true) | quote() }}
+  github-auth-team: {{ Values.concourse.githubAuthTeam | default("", true) | quote() }}
+  github-auth-user: {{ Values.concourse.githubAuthUser | default("", true) | quote() }}
+  github-auth-auth-url: {{ Values.concourse.githubAuthAuthUrl | default("", true) | quote() }}
+  github-auth-token-url: {{ Values.concourse.githubAuthTokenUrl | default("", true) | quote() }}
+  github-auth-api-url: {{ Values.concourse.githubAuthApiUrl | default("", true) | quote() }}
+  gitlab-auth-group: {{ Values.concourse.gitlabAuthGroup | default("", true) | quote() }}
+  gitlab-auth-auth-url: {{ Values.concourse.gitlabAuthAuthUrl | default("", true) | quote() }}
+  gitlab-auth-token-url: {{ Values.concourse.gitlabAuthTokenUrl | default("", true) | quote() }}
+  gitlab-auth-api-url: {{ Values.concourse.gitlabAuthApiUrl | default("", true) | quote() }}
+  generic-oauth-display-name: {{ Values.concourse.genericOauthDisplayName | default("", true) | quote() }}
+  generic-oauth-auth-url: {{ Values.concourse.genericOauthAuthUrl | default("", true) | quote() }}
+  generic-oauth-auth-url-param: {{ Values.concourse.genericOauthAuthUrlParam | default("", true) | quote() }}
+  generic-oauth-scope: {{ Values.concourse.genericOauthScope | default("", true) | quote() }}
+  generic-oauth-token-url: {{ Values.concourse.genericOauthTokenUrl | default("", true) | quote() }}
+  worker-post-stop-delay-seconds: {{ Values.worker.postStopDelaySeconds | quote() }}
+  worker-fatal-errors: {{ Values.worker.fatalErrors | default("", true) | quote() }}
+  #---{%- if Values.web.ingress.enabled -%}
+{%- set releaseName = Release.Name -%}
+{%- set serviceName = Values.web.nameOverride | default("web", true) -%}
+{%- set servicePort = Values.concourse.atcPort -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.concourse__web__fullname() }}
+  labels:
+    app: {{ self.concourse__web__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+    {%- for key, value in Values.web.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+    {%- endfor %}
+spec:
+  rules:
+    {%- for host in Values.web.ingress.hosts %}
+    - host: {{ host }}
+      http:
+        paths:
+          - backend:
+              serviceName: {{ "%s-%s" | format(releaseName,serviceName) | trunc(63) | trimSuffix("-") }}
+              servicePort: {{ servicePort }}
+    {%- endfor -%}
+  {%- if Values.web.ingress.tls %}
+  tls:
+{{ toYaml(Values.web.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.concourse__concourse__fullname() }}
+  labels:
+    app: {{ self.concourse__concourse__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.postgresql.enabled %}
+  postgresql-user: {{ Values.postgresql.postgresUser | b64enc() | quote() }}
+  {%- else %}
+  postgresql-uri: {{ Values.postgresql.uri | b64enc() | quote() }}
+  {%- endif %}
+  basic-auth-username: {{ Values.concourse.username | b64enc() | quote() }}
+  basic-auth-password: {{ Values.concourse.password | b64enc() | quote() }}
+  host-key: {{ Values.concourse.hostKey | b64enc() | quote() }}
+  host-key-pub: {{ Values.concourse.hostKeyPub | b64enc() | quote() }}
+  session-signing-key: {{ Values.concourse.sessionSigningKey | b64enc() | quote() }}
+  worker-key: {{ Values.concourse.workerKey | b64enc() | quote() }}
+  worker-key-pub: {{ Values.concourse.workerKeyPub | b64enc() | quote() }}
+  github-auth-client-id: {{ Values.concourse.githubAuthClientId | default("", true) | b64enc() | quote() }}
+  github-auth-client-secret: {{ Values.concourse.githubAuthClientSecret | default("", true) | b64enc() | quote() }}
+  gitlab-auth-client-id: {{ Values.concourse.gitlabAuthClientId | default("", true) | b64enc() | quote() }}
+  gitlab-auth-client-secret: {{ Values.concourse.gitlabAuthClientSecret | default("", true) | b64enc() | quote() }}
+  generic-oauth-client-id: {{ Values.concourse.genericOauthClientId | default("", true) | b64enc() | quote() }}
+  generic-oauth-client-secret: {{ Values.concourse.genericOauthClientSecret | default("", true) | b64enc() | quote() }}
+  encryption-key: {{ Values.concourse.encryptionKey | default("", true) | b64enc() | quote() }}
+  old-encryption-key: {{ Values.concourse.oldEncryptionKey | default("", true) | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.concourse__web__fullname() }}
+  labels:
+    app: {{ self.concourse__web__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.web.service.type }}
+  ports:
+    - name: atc
+      port: {{ Values.concourse.atcPort }}
+      targetPort: atc
+      {%- if ("NodePort"==Values.web.service.type) and Values.web.service.atcNodePort %}
+      nodePort: {{ Values.web.service.atcNodePort }}
+      {%- endif %}
+    - name: tsa
+      port: {{ Values.concourse.tsaPort }}
+      targetPort: tsa
+      {%- if ("NodePort"==Values.web.service.type) and Values.web.service.tsaNodePort %}
+      nodePort: {{ Values.web.service.tsaNodePort }}
+      {%- endif %}
+  selector:
+    app: {{ self.concourse__web__fullname() }}
+#---## A Headless Service is required when using a StatefulSet
+## ref: https://kubernetes.io/docs/tutorials/stateful-application/basic-stateful-set/
+##
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.concourse__worker__fullname() }}
+  labels:
+    app: {{ self.concourse__worker__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ## We do NOT expose any port as workers will forward connections with the ATC through a TSA reverse-tunnel
+  ## ref: https://concourse.ci/architecture.html#architecture-worker
+  ##
+  ports: []
+  selector:
+    app: {{ self.concourse__worker__fullname() }}
+#---apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: {{ self.concourse__worker__fullname() }}
+  labels:
+    app: {{ self.concourse__worker__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+
+spec:
+  serviceName: {{ self.concourse__worker__fullname() }}
+  replicas: {{ Values.worker.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.concourse__worker__fullname() }}
+      annotations:
+        {%- for key, value in Values.worker.annotations.iteritems() %}
+        {{ key }}: {{ value | quote() }}
+        {%- endfor %}
+    spec:
+      terminationGracePeriodSeconds: {{ Values.worker.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ self.concourse__worker__fullname() }}
+          image: "{{ Values.image }}:{{ Values.imageTag }}"
+          imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+          command:
+            - /bin/sh
+          args:
+            - -c
+            - |-
+              cp /dev/null /concourse-work-dir/.liveness_probe
+              concourse worker --name=${HOSTNAME} | tee -a /concourse-work-dir/.liveness_probe
+              sleep ${POST_STOP_DELAY_SECONDS}
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |-
+                  FATAL_ERRORS=$( echo "${LIVENESS_PROBE_FATAL_ERRORS}" | grep -q '\S' && \
+                      grep -F "${LIVENESS_PROBE_FATAL_ERRORS}" /concourse-work-dir/.liveness_probe )
+                  cp /dev/null /concourse-work-dir/.liveness_probe
+                  if [ ! -z "${FATAL_ERRORS}" ]; then
+                    >&2 echo "Fatal error detected: ${FATAL_ERRORS}"
+                    exit 1
+                  fi
+            failureThreshold: 1
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - "/bin/sh"
+                  - "-c"
+                  - "concourse retire-worker --name=${HOSTNAME}"
+          env:
+            - name: CONCOURSE_TSA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-tsa-host
+            - name: CONCOURSE_TSA_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-tsa-port
+            - name: CONCOURSE_GARDEN_DOCKER_REGISTRY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: garden-docker-registry
+            - name: CONCOURSE_GARDEN_INSECURE_DOCKER_REGISTRY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: garden-insecure-docker-registry
+            - name: CONCOURSE_TSA_PUBLIC_KEY
+              value: "/concourse-keys/host_key.pub"
+            - name: CONCOURSE_TSA_WORKER_PRIVATE_KEY
+              value: "/concourse-keys/worker_key"
+            - name: CONCOURSE_WORK_DIR
+              value: "/concourse-work-dir"
+            - name: CONCOURSE_BAGGAGECLAIM_DRIVER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-baggageclaim-driver
+            - name: POST_STOP_DELAY_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: worker-post-stop-delay-seconds
+            - name: LIVENESS_PROBE_FATAL_ERRORS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: worker-fatal-errors
+          resources:
+{{ toYaml(Values.worker.resources) | indent(12) }}
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: concourse-keys
+              mountPath: /concourse-keys
+              readOnly: true
+            - name: concourse-work-dir
+              mountPath: /concourse-work-dir
+      affinity:
+{%- if Values.worker.additionalAffinities %}
+{{ toYaml(Values.worker.additionalAffinities) | indent(8) }}
+{%- endif %}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: {{ self.concourse__worker__fullname() }}
+                  release: {{ Release.Name | quote() }}
+      volumes:
+        - name: concourse-keys
+          secret:
+            secretName: {{ self.concourse__concourse__fullname() }}
+            defaultMode: 0400
+            items:
+              - key: host-key-pub
+                path: host_key.pub
+              - key: worker-key
+                path: worker_key
+              - key: worker-key-pub
+                path: worker_key.pub
+  {%- if Values.persistence.enabled %}
+  volumeClaimTemplates:
+    - metadata:
+        name: concourse-work-dir
+      spec:
+        accessModes:
+          - {{ Values.persistence.worker.accessMode | quote() }}
+        resources:
+          requests:
+            storage: {{ Values.persistence.worker.size | quote() }}
+      {%- if Values.persistence.worker.storageClass %}
+      {%- if ("-"==Values.persistence.worker.storageClass) %}
+        storageClassName: ""
+      {%- else %}
+        storageClassName: "{{ Values.persistence.worker.storageClass }}"
+      {%- endif %}
+      {%- endif %}
+  {%- else %}
+        - name: concourse-work-dir
+          emptyDir: {}
+  {%- endif %}
+#---apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ self.concourse__worker__fullname() }}
+  labels:
+    app: {{ self.concourse__worker__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  minAvailable: {{ Values.worker.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ self.concourse__worker__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.concourse__web__fullname() }}
+  labels:
+    app: {{ self.concourse__web__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: {{ Values.web.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.concourse__web__fullname() }}
+    spec:
+      containers:
+        - name: {{ self.concourse__web__fullname() }}
+          image: "{{ Values.image }}:{{ Values.imageTag }}"
+          imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+          args:
+            - "web"
+          env:
+            {%- if Values.postgresql.enabled %}
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: postgresql-host
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: postgresql-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__postgresql__fullname() }}
+                  key: postgres-password
+            - name: POSTGRES_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: postgresql-database
+            - name: CONCOURSE_POSTGRES_DATA_SOURCE
+              value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(POSTGRES_HOST)/$(POSTGRES_DATABASE)?sslmode=disable
+            {%- else %}
+            - name: CONCOURSE_POSTGRES_DATA_SOURCE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: postgresql-uri
+            {%- endif %}
+            {%- if Values.encryptionKey %}
+            - name: CONCOURSE_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: encryption-key
+            {%- endif %}
+            {%- if Values.oldEncryptionKey %}
+            - name: CONCOURSE_OLD_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: old-encryption-key
+            {%- endif %}
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: CONCOURSE_BIND_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-atc-port
+            - name: CONCOURSE_PEER_URL
+              value: "http://$(POD_IP):$(CONCOURSE_BIND_PORT)"
+            - name: CONCOURSE_BASIC_AUTH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: basic-auth-username
+            - name: CONCOURSE_BASIC_AUTH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: basic-auth-password
+            - name: CONCOURSE_TSA_BIND_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-tsa-port
+            - name: CONCOURSE_ALLOW_SELF_SIGNED_CERTIFICATES
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-allow-self-signed-certificates
+            - name: CONCOURSE_AUTH_DURATION
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-auth-duration
+            - name: CONCOURSE_RESOURCE_CHECKING_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-resource-checking-interval
+            - name: CONCOURSE_OLD_RESOURCE_GRACE_PERIOD
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-old-resource-grace-period
+            - name: CONCOURSE_RESOURCE_CACHE_CLEANUP_INTERVAL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-resource-cache-cleanup-interval
+            {%- if Values.concourse.externalURL %}
+            - name: CONCOURSE_EXTERNAL_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: concourse-external-url
+            {%- endif %}
+            - name: CONCOURSE_GITHUB_AUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-client-id
+            - name: CONCOURSE_GITHUB_AUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-client-secret
+            {%- if Values.concourse.githubAuthOrganization %}
+            - name: CONCOURSE_GITHUB_AUTH_ORGANIZATION
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-organization
+            {%- endif %}
+            {%- if Values.concourse.githubAuthTeam %}
+            - name: CONCOURSE_GITHUB_AUTH_TEAM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-team
+            {%- endif %}
+            {%- if Values.concourse.githubAuthUser %}
+            - name: CONCOURSE_GITHUB_AUTH_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-user
+            {%- endif %}
+            - name: CONCOURSE_GITHUB_AUTH_AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-auth-url
+            - name: CONCOURSE_GITHUB_AUTH_TOKEN_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-token-url
+            - name: CONCOURSE_GITHUB_AUTH_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: github-auth-api-url
+            - name: CONCOURSE_GITLAB_AUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: gitlab-auth-client-id
+            - name: CONCOURSE_GITLAB_AUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: gitlab-auth-client-secret
+            {%- if Values.concourse.gitlabAuthGroup %}
+            - name: CONCOURSE_GITLAB_AUTH_GROUP
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: gitlab-auth-group
+            {%- endif %}
+            - name: CONCOURSE_GITLAB_AUTH_AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: gitlab-auth-auth-url
+            - name: CONCOURSE_GITLAB_AUTH_TOKEN_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: gitlab-auth-token-url
+            - name: CONCOURSE_GITLAB_AUTH_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: gitlab-auth-api-url
+            - name: CONCOURSE_GENERIC_OAUTH_DISPLAY_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: generic-oauth-display-name
+            - name: CONCOURSE_GENERIC_OAUTH_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: generic-oauth-client-id
+            - name: CONCOURSE_GENERIC_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: generic-oauth-client-secret
+            - name: CONCOURSE_GENERIC_OAUTH_AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: generic-oauth-auth-url
+            - name: CONCOURSE_GENERIC_OAUTH_AUTH_URL_PARAM
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: generic-oauth-auth-url-param
+            - name: CONCOURSE_GENERIC_OAUTH_SCOPE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: generic-oauth-scope
+            - name: CONCOURSE_GENERIC_OAUTH_TOKEN_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.concourse__concourse__fullname() }}
+                  key: generic-oauth-token-url
+            - name: CONCOURSE_TSA_HOST_KEY
+              value: "/concourse-keys/host_key"
+            - name: CONCOURSE_SESSION_SIGNING_KEY
+              value: "/concourse-keys/session_signing_key"
+            - name: CONCOURSE_TSA_AUTHORIZED_KEYS
+              value: "/concourse-keys/worker_key.pub"
+          ports:
+            - name: atc
+              containerPort: {{ Values.concourse.atcPort }}
+            - name: tsa
+              containerPort: {{ Values.concourse.tsaPort }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: atc
+            initialDelaySeconds: 120
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: atc
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+          resources:
+{{ toYaml(Values.web.resources) | indent(12) }}
+          volumeMounts:
+            - name: concourse-keys
+              mountPath: /concourse-keys
+              readOnly: true
+      affinity:
+{%- if Values.web.additionalAffinities %}
+{{ toYaml(Values.web.additionalAffinities) | indent(8) }}
+{%- endif %}
+      volumes:
+        - name: concourse-keys
+          secret:
+            secretName: {{ self.concourse__concourse__fullname() }}
+            defaultMode: 0400
+            items:
+              - key: host-key
+                path: host_key
+              - key: session-signing-key
+                path: session_signing_key
+              - key: worker-key-pub
+                path: worker_key.pub

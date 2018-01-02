@@ -1,0 +1,26 @@
+{%- if Values.networkPolicy.enabled %}
+apiVersion: {{ self.prometheus__networkPolicy__apiVersion() }}
+kind: NetworkPolicy
+metadata:
+  name: {{ self.prometheus__kubeStateMetrics__fullname() }}
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.kubeStateMetrics.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ self.prometheus__name() }}
+      component: "{{ Values.kubeStateMetrics.name }}"
+      release: {{ Release.Name }}
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          release: {{ Release.Name }}
+          component: "{{ Values.server.name }}"
+  - ports:
+    - port: 8080
+{%- endif %}

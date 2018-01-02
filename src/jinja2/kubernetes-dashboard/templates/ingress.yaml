@@ -1,0 +1,32 @@
+{%- if Values.ingress.enabled -%}
+{%- set fullName =  self.kubernetes-dashboard__fullname() %}
+{%- set httpPort = Values.httpPort %}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+  {%- for key, value in Values.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  labels:
+    app: {{ self.kubernetes-dashboard__name() }}
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+  name: {{ self.kubernetes-dashboard__fullname() }}
+spec:
+  rules:
+  {%- for item in Values.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ fullName }}
+              servicePort: {{ httpPort }}
+  {%- endfor -%}
+  {%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}

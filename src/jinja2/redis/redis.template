@@ -1,0 +1,185 @@
+{%- if Values.networkPolicy.enabled %}
+kind: NetworkPolicy
+apiVersion: {{ self.networkPolicy__apiVersion() }}
+metadata:
+  name: "{{ self.redis__fullname() }}"
+  labels:
+    app: {{ self.redis__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ self.redis__fullname() }}
+  ingress:
+    # Allow inbound connections
+    - ports:
+      - port: 6379
+      {%- if  not  Values.networkPolicy.allowExternal %}
+      from:
+        - podSelector:
+            matchLabels:
+              {{ self.redis__fullname() }}-client: "true"
+      {%- endif %}
+    {%- if Values.metrics.enabled %}
+    # Allow prometheus scrapes for metrics
+    - ports:
+      - port: 9121
+    {%- endif %}
+{%- endif %}
+#---{%- if Values.persistence.enabled and ( not  Values.persistence.existingClaim) %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.redis__fullname() }}
+  labels:
+    app: {{ self.redis__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---{%- if Values.usePassword -%}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.redis__fullname() }}
+  labels:
+    app: {{ self.redis__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.redisPassword %}
+  redis-password: {{ Values.redisPassword | b64enc() | quote() }}
+  {%- else %}
+  redis-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.redis__fullname() }}
+  labels:
+    app: {{ self.redis__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- if Values.metrics.enabled %}
+  annotations:
+{{ toYaml(Values.metrics.annotations) | indent(4) }}
+{%- endif %}
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+  selector:
+    app: {{ self.redis__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.redis__fullname() }}
+  labels:
+    app: {{ self.redis__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.redis__fullname() }}
+    spec:
+      {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {%- endif %}
+      {%- if Values.tolerations %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+      {%- endif %}
+      containers:
+      - name: {{ self.redis__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        {%- if Values.args %}
+        args:
+{{ toYaml(Values.args) | indent(10) }}
+        {%- endif %}
+        env:
+        {%- if Values.usePassword %}
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redis__fullname() }}
+              key: redis-password
+        {%- else %}
+        - name: ALLOW_EMPTY_PASSWORD
+          value: "yes"
+        {%- endif %}
+        ports:
+        - name: redis
+          containerPort: 6379
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: redis-data
+          mountPath: /bitnami/redis
+{%- if Values.metrics.enabled %}
+      - name: metrics
+        image: "{{ Values.metrics.image }}:{{ Values.metrics.imageTag }}"
+        imagePullPolicy: {{ Values.metrics.imagePullPolicy | quote() }}
+        env:
+        - name: REDIS_ALIAS
+          value: {{ self.redis__fullname() }}
+        {%- if Values.usePassword %}
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redis__fullname() }}
+              key: redis-password
+        {%- endif %}
+        ports:
+        - name: metrics
+          containerPort: 9121
+        resources:
+{{ toYaml(Values.metrics.resources) | indent(10) }}
+{%- endif %}
+      volumes:
+      - name: redis-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.persistence.existingClaim | default  (self.redis__fullname()) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

@@ -1,0 +1,249 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.cluster-autoscaler__fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.cluster-autoscaler__fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+      - endpoints
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    resourceNames:
+      - cluster-autoscaler
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+      - pods
+      - services
+      - replicationcontrollers
+      - persistentvolumeclaims
+      - persistentvolumes
+    verbs:
+      - watch
+      - list
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - watch
+      - list
+  - apiGroups:
+      - extensions
+    resources:
+      - replicasets
+      - daemonsets
+    verbs:
+      - watch
+      - list
+  - apiGroups:
+      - policy
+    resources:
+      - poddisruptionbudgets
+    verbs:
+      - watch
+      - list
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ self.cluster-autoscaler__fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.cluster-autoscaler__fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    resourceNames:
+      - cluster-autoscaler-status
+    verbs:
+      - delete
+      - get
+      - update
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+{%- endif -%}
+#---apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.service.annotations %}
+  annotations:
+{{ toYaml(Values.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+spec:
+  clusterIP: "{{ Values.service.clusterIP }}"
+{%- if Values.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - port: {{ Values.service.servicePort }}
+      protocol: TCP
+      targetPort: 8085
+  selector:
+    app: {{ self.cluster-autoscaler__name() }}
+    release: {{ Release.Name }}
+  type: "{{ Values.service.type }}"
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.cluster-autoscaler__name() }}
+        release: {{ Release.Name }}
+      {%- if Values.podLabels %}
+{{ toYaml(Values.podLabels) | indent(8) }}
+      {%- endif %}
+    spec:
+      containers:
+        - name: {{ self.cluster-autoscaler__name() }}
+        {%- if Values.cloudProvider=="spotinst" %}
+          image: "{{ Values.spotinst.image.repository }}:{{ Values.spotinst.image.tag }}"
+          imagePullPolicy: "{{ Values.spotinst.image.pullPolicy }}"
+        {%- else %}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+        {%- endif %}
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider={{ Values.cloudProvider }}
+            - --namespace={{ Release.Namespace }}
+          {%- for item in Values.autoscalingGroups %}
+            - --nodes={{ item.minSize }}:{{ item.maxSize }}:{{ item.name }}
+          {%- endfor %}
+          {%- for key, value in Values.extraArgs.iteritems() %}
+            - --{{ key }}={{ value }}
+          {%- endfor %}
+          env:
+          {%- if Values.cloudProvider=="aws" %}
+            - name: AWS_REGION
+              value: "{{ Values.awsRegion }}"
+          {%- elif Values.cloudProvider=="spotinst" %}
+            - name: SPOTINST_TOKEN
+              value: "{{ Values.spotinst.token }}"
+            - name: SPOTINST_ACCOUNT
+              value: "{{ Values.spotinst.account }}"
+          {%- endif %}
+          livenessProbe:
+            httpGet:
+              path: /health-check
+              port: 8085
+          ports:
+            - containerPort: 8085
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs/ca-certificates.crt
+              readOnly: true
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.cluster-autoscaler__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: /etc/ssl/certs/ca-certificates.crt

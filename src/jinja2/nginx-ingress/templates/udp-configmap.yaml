@@ -1,0 +1,14 @@
+{%- if Values.udp %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}-udp
+data:
+{{ toYaml(Values.udp) | indent(2) }}
+{%- endif %}

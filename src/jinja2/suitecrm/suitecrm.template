@@ -1,0 +1,192 @@
+{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}-apache
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.apache.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.apache.size | quote() }}
+{%- if Values.persistence.apache.storageClass %}
+{%- if ("-"==Values.persistence.apache.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.apache.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}-suitecrm
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.suitecrm.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.suitecrm.size | quote() }}
+{%- if Values.persistence.suitecrm.storageClass %}
+{%- if ("-"==Values.persistence.suitecrm.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.suitecrm.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.suitecrmPassword %}
+  suitecrm-password: {{ Values.suitecrmPassword | b64enc() | quote() }}
+  {%- else %}
+  suitecrm-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  suitecrm-smtp-password: {{ Values.suitecrmSmtpPassword | default("", true) | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+    service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerIP: {{ Values.suitecrmLoadBalancerIP }}
+  {%- endif %}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: {{ self.name() }}
+    release: "{{ Release.Name }}"
+#---{%- if self.host() -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.name() }}
+        release: "{{ Release.Name }}"
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: SUITECRM_HOST
+          value: {{ self.host()  | quote() }}
+        - name: SUITECRM_USERNAME
+          value: {{ Values.suitecrmUsername | quote() }}
+        - name: SUITECRM_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: suitecrm-password
+        - name: SUITECRM_EMAIL
+          value: {{ Values.suitecrmEmail | quote() }}
+        - name: SUITECRM_LAST_NAME
+          value: {{ Values.suitecrmLastName | quote() }}
+        - name: SUITECRM_SMTP_HOST
+          value: {{ Values.suitecrmSmtpHost | quote() }}
+        - name: SUITECRM_SMTP_PORT
+          value: {{ Values.suitecrmSmtpPort | quote() }}
+        - name: SUITECRM_SMTP_USER
+          value: {{ Values.suitecrmSmtpUser | quote() }}
+        - name: SUITECRM_SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: suitecrm-smtp-password
+        - name: SUITECRM_SMTP_PROTOCOL
+          value: {{ Values.suitecrmSmtpProtocol | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 300
+        readinessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 60
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: suitecrm-data
+          mountPath: /bitnami/suitecrm
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: suitecrm-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-suitecrm
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif -%}

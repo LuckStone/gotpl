@@ -1,0 +1,92 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-memcached
+  labels:
+    app: test-memcached
+    chart: "memcached-2.0.0"
+    release: "test"
+    heritage: "memcached"
+spec:
+  clusterIP: None
+  ports:
+  - name: memcache
+    port: 11211
+    targetPort: memcache
+  selector:
+    app: test-memcached
+
+
+---
+
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: test-memcached
+  labels:
+    app: test-memcached
+    chart: "memcached-2.0.0"
+    release: "test"
+    heritage: "memcached"
+spec:
+  serviceName: test-memcached
+  replicas: 3
+  template:
+    metadata:
+      labels:
+        app: test-memcached
+        chart: "memcached-2.0.0"
+        release: "test"
+        heritage: "memcached"
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                app:  test-memcached
+                release: "test"
+      containers:
+      - name: test-memcached
+        image: memcached:1.4.36-alpine
+        imagePullPolicy: ""
+        command:
+        - memcached
+        - -m 64
+        - -o
+        - modern
+        - -v
+        ports:
+        - name: memcache
+          containerPort: 11211
+        livenessProbe:
+          tcpSocket:
+            port: memcache
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: memcache
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+
+
+---
+
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: test-memcached
+spec:
+  selector:
+    matchLabels:
+      app: test-memcached
+      chart: "memcached-2.0.0"
+      release: "test"
+      heritage: "memcached"
+  minAvailable: 3
+  

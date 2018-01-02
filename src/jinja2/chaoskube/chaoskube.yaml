@@ -1,0 +1,36 @@
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-chaoskube
+  labels:
+    app: test-chaoskube
+    chart: chaoskube-0.5.0
+    release: test
+    heritage: chaoskube
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-chaoskube
+        chart: chaoskube-0.5.0
+        release: test
+        heritage: chaoskube
+    spec:
+      containers:
+      - name: chaoskube
+        image: quay.io/linki/chaoskube:v0.5.0
+        args:
+        - --in-cluster
+        - --interval=10m
+        - --labels=None
+        - --annotations=None
+        - --namespaces=None
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 10m
+            memory: 16Mi

@@ -1,0 +1,108 @@
+{%- if self.osclass__host() -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.osclass__fullname() }}
+  labels:
+    app: {{ self.osclass__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.osclass__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.osclass__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.osclass__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.osclass__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: OSCLASS_HOST
+          value: {{ self.osclass__host()  | quote() }}
+        - name: OSCLASS_USERNAME
+          value: {{ Values.osclassUsername | default("", true) | quote() }}
+        - name: OSCLASS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.osclass__fullname() }}
+              key: osclass-password
+        - name: OSCLASS_EMAIL
+          value: {{ Values.osclassEmail | default("", true) | quote() }}
+        - name: OSCLASS_WEB_TITLE
+          value: {{ Values.osclassWebTitle | default("", true) | quote() }}
+        - name: OSCLASS_PING_ENGINES
+          value: {{ Values.osclassPingEngines | default("", true) | quote() }}
+        - name: OSCLASS_SAVE_STATS
+          value: {{ Values.osclassSaveStats | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.osclass__fullname() }}
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.osclass__host()  | quote() }}
+          initialDelaySeconds: 120
+          timeoutSeconds: 120
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.osclass__host()  | quote() }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 120
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: osclass-data
+          mountPath: /bitnami/osclass
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: osclass-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.osclass__fullname() }}-osclass
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.osclass__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif -%}

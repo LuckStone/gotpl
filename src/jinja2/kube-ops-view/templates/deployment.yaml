@@ -1,0 +1,30 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.kube-ops-view__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.kube-ops-view__fullname() }}
+    spec:
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.kube-ops-view__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ Values.service.internalPort }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ Values.service.internalPort }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ Values.service.internalPort }}
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}

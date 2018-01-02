@@ -1,0 +1,19 @@
+{%- if Values.persistence.enabled and ( not  Values.persistence.existingClaim) %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.rabbitmq__fullname() }}
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}

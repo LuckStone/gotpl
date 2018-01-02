@@ -1,0 +1,205 @@
+{%- if Values.networkPolicy.enabled %}
+kind: NetworkPolicy
+apiVersion: {{ self.postgresql__networkPolicy__apiVersion() }}
+metadata:
+  name: "{{ self.postgresql__fullname() }}"
+  labels:
+    app: {{ self.postgresql__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  podSelector:
+    matchLabels:
+      app: "{{ self.postgresql__fullname() }}"
+  ingress:
+    # Allow inbound connections
+    - ports:
+      - port: 5432
+    {%- if  not  Values.networkPolicy.allowExternal %}
+      from:
+      - podSelector:
+          matchLabels:
+            {{ self.postgresql__fullname() }}-client: "true"
+    {%- endif %}
+    # Allow prometheus scrapes
+    - ports:
+      - port: 9187
+{%- endif %}
+#---{%- if Values.persistence.enabled and ( not  Values.persistence.existingClaim) -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.postgresql__fullname() }}
+  labels:
+    app: {{ self.postgresql__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.postgresql__fullname() }}
+  labels:
+    app: {{ self.postgresql__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.postgresPassword %}
+  postgres-password:  {{ Values.postgresPassword | b64enc() | quote() }}
+  {%- else %}
+  postgres-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  {%- if Values.metrics.customMetrics %}
+  custom-metrics.yaml: {{ toYaml(Values.metrics.customMetrics) | b64enc() | quote() }}
+  {%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.postgresql__fullname() }}
+  labels:
+    app: {{ self.postgresql__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- if Values.metrics.enabled %}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9187"
+{%- endif %}
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - name: postgresql
+    port: {{ Values.service.port }}
+    targetPort: postgresql
+{%- if Values.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.service.externalIPs) | indent(4) }}
+{%- endif %}
+  selector:
+    app: {{ self.postgresql__fullname() }}#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.postgresql__fullname() }}
+  labels:
+    app: {{ self.postgresql__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.postgresql__fullname() }}
+    spec:
+      {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {%- endif %}
+      {%- if Values.tolerations %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+      {%- endif %}
+      containers:
+      - name: {{ self.postgresql__fullname() }}
+        image: "{{ Values.image }}:{{ Values.imageTag }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: POSTGRES_USER
+          value: {{ Values.postgresUser | default("postgres", true) | quote() }}
+          # Required for pg_isready in the health probes.
+        - name: PGUSER
+          value: {{ Values.postgresUser | default("postgres", true) | quote() }}
+        - name: POSTGRES_DB
+          value: {{ Values.postgresDatabase | default("", true) | quote() }}
+        - name: POSTGRES_INITDB_ARGS
+          value: {{ Values.postgresInitdbArgs | default("", true) | quote() }}
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.postgresql__fullname() }}
+              key: postgres-password
+        - name: POD_IP
+          valueFrom: { fieldRef: { fieldPath: status.podIP } }
+        ports:
+        - name: postgresql
+          containerPort: 5432
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready --host $POD_IP
+          initialDelaySeconds: 60
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready --host $POD_IP
+          initialDelaySeconds: 5
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data/pgdata
+          subPath: {{ Values.persistence.subPath }}
+{%- if Values.metrics.enabled %}
+      - name: metrics
+        image: "{{ Values.metrics.image }}:{{ Values.metrics.imageTag }}"
+        imagePullPolicy: {{ Values.metrics.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: DATA_SOURCE_NAME
+          value: postgresql://postgres@127.0.0.1:5432?sslmode=disable
+        ports:
+        - name: metrics
+          containerPort: 9187
+        {%- if Values.metrics.customMetrics %}
+        args: ["-extend.query-path", "/conf/custom-metrics.yaml"]
+        volumeMounts:
+          - name: custom-metrics
+            mountPath: /conf
+            readOnly: true
+        {%- endif %}
+        resources:
+{{ toYaml(Values.metrics.resources) | indent(10) }}
+{%- endif %}
+      volumes:
+      - name: data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.persistence.existingClaim | default  (self.postgresql__fullname()) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      {%- if Values.metrics.enabled and Values.metrics.customMetrics %}
+      - name: custom-metrics
+        secret:
+          secretName: {{ self.postgresql__fullname() }}
+          items:
+            - key: custom-metrics.yaml
+              path: custom-metrics.yaml
+      {%- endif %}

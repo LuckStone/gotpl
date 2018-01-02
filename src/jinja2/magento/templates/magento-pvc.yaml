@@ -1,0 +1,24 @@
+{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.magento__fullname() }}-magento
+  labels:
+    app: {{ self.magento__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.magento.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.magento.size | quote() }}
+{%- if Values.persistence.magento.storageClass %}
+{%- if ("-"==Values.persistence.magento.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.magento.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}

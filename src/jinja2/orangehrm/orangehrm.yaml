@@ -1,0 +1,156 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-orangehrm-apache
+  labels:
+    app: test-orangehrm
+    chart: "orangehrm-0.5.0"
+    release: "test"
+    heritage: "orangehrm"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-orangehrm-orangehrm
+  labels:
+    app: test-orangehrm
+    chart: "orangehrm-0.5.0"
+    release: "test"
+    heritage: "orangehrm"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-orangehrm
+  labels:
+    app: test-orangehrm
+    chart: "orangehrm-0.5.0"
+    release: "test"
+    heritage: "orangehrm"
+type: Opaque
+data:
+  orangehrm-password: "CmJucGNranhodGcK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-orangehrm
+  labels:
+    app: test-orangehrm
+    chart: "orangehrm-0.5.0"
+    release: "test"
+    heritage: "orangehrm"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: test-orangehrm
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-orangehrm
+  labels:
+    app: test-orangehrm
+    chart: "orangehrm-0.5.0"
+    release: "test"
+    heritage: "orangehrm"
+spec:
+  template:
+    metadata:
+      labels:
+        app: test-orangehrm
+    spec:
+      containers:
+      - name: test-orangehrm
+        image: "bitnami/orangehrm:4.0.0-r0"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: ORANGEHRM_USERNAME
+          value: "admin"
+        - name: ORANGEHRM_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-orangehrm
+              key: orangehrm-password
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-orangehrm
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: "none"
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /symfony/web/index.php
+            port: http
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /symfony/web/index.php
+            port: http
+          initialDelaySeconds: 30
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: orangehrm-data
+          mountPath: /bitnami/orangehrm
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: orangehrm-data
+        persistentVolumeClaim:
+          claimName: test-orangehrm-orangehrm
+      - name: apache-data
+        persistentVolumeClaim:
+          claimName: test-orangehrm-apache

@@ -1,0 +1,280 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}-config
+data:
+  {%- if Values.server.installPlugins -%}
+  grafana-install-plugins: {{ Values.server.installPlugins | quote() }}
+  {%- endif -%}
+{{ toYaml(Values.serverConfigFile) | indent(2) }}
+#---apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}-dashs
+data:
+{{ toYaml(Values.serverDashboardFiles) | indent(2) }}
+#---{%- if Values.server.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+  {%- for key, value in Values.server.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}
+spec:
+  rules:
+  {%- for item in Values.server.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - backend:
+              serviceName: {{ self.grafana__server__fullname() }}
+              servicePort: {{ Values.server.service.httpPort }}
+  {%- endfor -%}
+  {%- if Values.server.ingress.tls %}
+  tls:
+{{ toYaml(Values.server.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}
+#---{%- if Values.server.setDatasource.enabled -%}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}-set-datasource
+spec:
+  activeDeadlineSeconds: {{ Values.server.setDatasource.activeDeadlineSeconds | default(300, true) }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.grafana__fullname() }}
+        component: "{{ Values.server.name }}"
+        release: "{{ Release.Name }}"
+    spec:
+      containers:
+      - name: {{ self.grafana__server__fullname() }}-set-datasource
+        image: "{{ Values.server.setDatasource.image }}"
+        env:
+        - name: ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.grafana__server__fullname() }}
+              key: grafana-admin-user
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.grafana__server__fullname() }}
+              key: grafana-admin-password
+        args:
+          - "http://$(ADMIN_USER):$(ADMIN_PASSWORD)@{{ self.grafana__fullname() }}:{{ Values.server.httpPort }}/api/datasources"
+          - "--max-time"
+          - "10"
+          - "-H"
+          - "Content-Type: application/json;charset=UTF-8"
+          - "--data-binary"
+          {%- set datasource = Values.server.setDatasource.datasource -%}
+          - "{\"name\":\"{{ datasource.name }}\",\"type\":\"{{ datasource.type }}\",\"url\":\"{{ datasource.url }}\",\"database\":\"{{ datasource.database }}\",\"jsonData\":{ {{ datasource.jsonData }} },\"access\":\"{{ datasource.access }}\",\"isDefault\":{{ datasource.isDefault }}}"
+      restartPolicy: {{ Values.server.setDatasource.restartPolicy }}
+{%- endif -%}
+#---{%- if Values.server.persistentVolume.enabled -%}
+{%- if  not  Values.server.persistentVolume.existingClaim -%}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+  {%- if Values.server.persistentVolume.annotations %}
+{{ toYaml(Values.server.persistentVolume.annotations) | indent(4) }}
+  {%- endif %}
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}
+spec:
+  accessModes:
+{%- for item in Values.server.persistentVolume.accessModes %}
+    - {{ item | quote() }}
+{%- endfor %}
+  resources:
+    requests:
+      storage: {{ Values.server.persistentVolume.size | quote() }}
+{%- if Values.server.persistentVolume.storageClass %}
+{%- if ("-"==Values.server.persistentVolume.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.server.persistentVolume.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}
+type: Opaque
+data:
+  {%- if Values.server.adminPassword %}
+  grafana-admin-password: {{ Values.server.adminPassword | b64enc() | quote() }}
+  {%- else %}
+  grafana-admin-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  grafana-admin-user: {{ Values.server.adminUser | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.server.service.annotations %}
+  annotations:
+{{ toYaml(Values.server.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}
+spec:
+  ports:
+    - name: {{ Values.server.service.httpPortName | default("http", true) | quote() }}
+      port: {{ Values.server.service.httpPort }}
+      protocol: TCP
+      targetPort: 3000
+{%- if "NodePort"==Values.server.service.type %}
+  {%- if Values.server.service.nodePort %}
+      nodePort:  {{ Values.server.service.nodePort }}
+  {%- endif %}
+{%- endif %}
+  selector:
+    app: {{ self.grafana__fullname() }}
+    component: "{{ Values.server.name }}"
+  type: "{{ Values.server.service.type }}"
+{%- if "LoadBalancer"==Values.server.service.type %}
+  {%- if Values.server.service.loadBalancerIP %}
+  loadBalancerIP: {{ Values.server.service.loadBalancerIP }}
+  {%- endif -%}
+  {%- if Values.server.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+  {%- for item in Values.server.service.loadBalancerSourceRanges %}
+  - {{ item }}
+  {%- endfor %}
+  {%- endif -%}
+{%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        checksum/config: ""
+        checksum/dashboards-config: ""
+{%- if Values.server.annotations %}
+      {%- for key, value in Values.server.annotations.iteritems() %}
+        {{ key }}: {{ value }}
+      {%- endfor %}
+{%- endif %}
+      labels:
+        app: {{ self.grafana__fullname() }}
+        component: "{{ Values.server.name }}"
+        release: "{{ Release.Name }}"
+    spec:
+      nodeSelector:
+{{ toYaml(Values.server.nodeSelector) | indent(8) }}
+  {%- if Values.server.tolerations %}
+      tolerations:
+{{ toYaml(Values.server.tolerations) | indent(8) }}
+  {%- endif %}
+      containers:
+        - name: {{ self.grafana__name() }}
+          image: "{{ Values.server.image }}"
+          imagePullPolicy: {{ Values.server.imagePullPolicy | default("Always", true) }}
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.grafana__server__fullname() }}
+                  key: grafana-admin-user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.grafana__server__fullname() }}
+                  key: grafana-admin-password
+            {%- if Values.server.installPlugins %}
+            - name: GF_INSTALL_PLUGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.grafana__server__fullname() }}-config
+                  key: grafana-install-plugins
+            {%- endif %}
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+          resources:
+{{ toYaml(Values.server.resources) | indent(12) }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: {{ Values.server.configLocalPath | default("/etc/grafana", true) | quote() }}
+            - name: dashboard-volume
+              mountPath: {{ Values.server.dashboardLocalPath | default("/var/lib/grafana/dashboards", true) | quote() }}
+            - name: storage-volume
+              mountPath: {{ Values.server.storageLocalPath | default("/var/lib/grafana", true) | quote() }}
+              subPath: "{{ Values.server.persistentVolume.subPath }}"
+      terminationGracePeriodSeconds: {{ Values.server.terminationGracePeriodSeconds | default(300, true) }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ self.grafana__server__fullname() }}-config
+        - name: dashboard-volume
+          configMap:
+            name: {{ self.grafana__server__fullname() }}-dashs
+        - name: storage-volume
+      {%- if Values.server.persistentVolume.enabled %}
+          persistentVolumeClaim:
+            claimName: {%- if Values.server.persistentVolume.existingClaim %}{{ Values.server.persistentVolume.existingClaim }}{%- else %}{{ self.grafana__server__fullname() }}{%- endif %}
+      {%- else %}
+          emptyDir: {}
+      {%- endif -%}

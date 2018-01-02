@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.coredns__fullname() }}
+data:
+  Corefile: |-
+    .:53 {
+      {%- for key, middleware in Values.middleware.iteritems() %}
+      {%- if middleware.enabled %}
+      {%- if "kubernetes"==key %}
+        kubernetes {{ middleware.clusterDomain }} {
+          cidrs {{ middleware.clusterCidr }}
+        }
+      {%- endif %}
+      {%- if "etcd"==key %}
+        etcd {{ range middleware.zones }}{{ item }} {%- endif %}{
+          {%- if middleware.path %}path {{ middleware.path }}{%- endif %}
+          endpoint {{ middleware.endpoint }}
+        }
+      {%- endif %}
+      {%- if "loadbalance"==key %}
+        loadbalance {{ middleware.policy | default("round_robin", true) }}
+      {%- endif %}
+      {%- if "log"==key %}
+        log {{ middleware.file | default("stdout", true) }}
+      {%- endif %}
+      {%- if "errors"==key %}
+        errors {{ middleware.file | default("stderr", true) }}
+      {%- endif %}
+      {%- if "health"==key %}
+        health
+      {%- endif %}
+      {%- if "prometheus"==key %}
+        prometheus 0.0.0.0:{{ middleware.port }}
+      {%- endif %}
+      {%- if "proxy"==key %}
+        proxy . /etc/resolv.conf
+      {%- endif %}
+      {%- if "cache"==key %}
+        cache 30
+      {%- endif %}
+      {%- endfor %}
+      {%- endif %}
+    }

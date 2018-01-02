@@ -1,0 +1,33 @@
+{%- if Values.alertmanager.enabled and Values.alertmanager.ingress.enabled -%}
+{%- set releaseName = Release.Name -%}
+{%- set serviceName =  self.prometheus__alertmanager__fullname() %}
+{%- set servicePort = Values.alertmanager.service.servicePort -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+{%- if Values.alertmanager.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.alertmanager.ingress.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.alertmanager.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.prometheus__alertmanager__fullname() }}
+spec:
+  rules:
+  {%- for item in Values.alertmanager.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - backend:
+              serviceName: {{ serviceName }}
+              servicePort: {{ servicePort }}
+  {%- endfor -%}
+{%- if Values.alertmanager.ingress.tls %}
+  tls:
+{{ toYaml(Values.alertmanager.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}

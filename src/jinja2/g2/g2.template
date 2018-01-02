@@ -1,0 +1,121 @@
+{%- if Values.rbac.install %}
+{%- set serviceName =  self.g2__fullname() -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ serviceName }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.g2__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+subjects:
+- kind: ServiceAccount
+  name: {{ serviceName }}
+  namespace: {{ Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ serviceName }}
+{%- endif %}
+#---{%- if Values.rbac.install %}
+{%- set serviceName =  self.g2__fullname() -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: {{ serviceName }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.g2__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+rules:
+- apiGroups:
+  - extensions
+  resources:
+  - deployments
+  verbs: ["get", "create", "update"]
+- apiGroups: [""]
+  resources:
+  - services
+  verbs: ["create", "update"]
+- apiGroups: [""]
+  resources:
+  - pods
+  verbs: ["list", "create", "update", "delete"]
+{%- endif %}
+#---{%- if Values.rbac.install %}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ self.g2__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.g2__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.g2__fullname() }}
+  labels:
+    app: "{{ self.g2__name() }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  ports:
+  - name: http
+    port: 4730
+    protocol: TCP
+    targetPort: http
+  - name: restapi
+    port: 3000
+    protocol: TCP
+    targetPort: restapi
+  selector:
+    app: "{{ self.g2__name() }}"
+    release: "{{ Release.Name }}"
+  type: '{{ Values.g2.serviceType }}'
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.g2__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.g2__name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: "{{ self.g2__name() }}"
+        release: "{{ Release.Name }}"
+    spec:
+{%- if Values.rbac.install %}
+      serviceAccountName: {{ self.g2__fullname() }}
+{%- endif %}
+      containers:
+      - args:
+        - run
+        - --storage-dir=/var/db
+        - --v=5
+        image: '{{ Values.g2.image }}:{{ Values.g2.tag }}'
+        imagePullPolicy: '{{ Values.g2.pullPolicy }}'
+        name: gearman-server
+        ports:
+        - containerPort: 4730
+          name: http
+          protocol: TCP
+        - containerPort: 3000
+          name: restapi
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /var/db
+          name: data-volume
+      volumes:
+      - emptyDir: {}
+        name: data-volume

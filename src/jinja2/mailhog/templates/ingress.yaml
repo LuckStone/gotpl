@@ -1,0 +1,36 @@
+{%- if Values.ingress.enabled %}
+{%- set fullName =  self.mailhog__fullname() -%}
+{%- set path = Values.ingress.path -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+{%- if Values.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.ingress.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.mailhog__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ fullName }}
+spec:
+{%- if Values.ingress.tls.enabled %}
+  tls:
+    - hosts:
+      {%- for item in Values.ingress.hosts %}
+        - {{ item }}
+      {%- endfor %}
+      secretName: {{ self.mailhog__tlsSecret() }}
+{%- endif %}
+  rules:
+  {%- for item in Values.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - path: {{ path }}
+            backend:
+              serviceName: {{ fullName }}
+              servicePort: http
+  {%- endfor %}
+{%- endif %}

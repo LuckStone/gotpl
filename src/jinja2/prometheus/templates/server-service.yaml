@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.server.service.annotations %}
+  annotations:
+{{ toYaml(Values.server.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.server.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+{%- if Values.server.service.labels %}
+{{ toYaml(Values.server.service.labels) | indent(4) }}
+{%- endif %}
+  name: {{ self.prometheus__server__fullname() }}
+spec:
+{%- if Values.server.service.clusterIP %}
+  clusterIP: {{ Values.server.service.clusterIP }}
+{%- endif %}
+{%- if Values.server.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.server.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.server.service.loadBalancerIP %}
+  loadBalancerIP: {{ Values.server.service.loadBalancerIP }}
+{%- endif %}
+{%- if Values.server.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+  {%- for cidr in Values.server.service.loadBalancerSourceRanges %}
+    - {{ cidr }}
+  {%- endfor %}
+{%- endif %}
+  ports:
+    - name: http
+      port: {{ Values.server.service.servicePort }}
+      protocol: TCP
+      targetPort: 9090
+    {%- if Values.server.service.nodePort %}
+      nodePort: {{ Values.server.service.nodePort }}
+    {%- endif %}
+  selector:
+    app: {{ self.prometheus__name() }}
+    component: "{{ Values.server.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.server.service.type }}"

@@ -1,0 +1,145 @@
+{%- if Values.rbac.install %}
+{%- set serviceName =  self.etcd-operator__fullname() -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: {{ serviceName }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.etcd-operator__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+rules:
+- apiGroups:
+  - etcd.coreos.com
+  resources:
+  - clusters
+  verbs:
+  - "*"
+- apiGroups:
+  - extensions
+  resources:
+  - thirdpartyresources
+  verbs:
+  - "*"
+- apiGroups:
+  - storage.k8s.io
+  resources:
+  - storageclasses
+  verbs:
+  - "*"
+- apiGroups: 
+  - ""
+  resources:
+  - pods
+  - services
+  - endpoints
+  - persistentvolumeclaims
+  - events
+  verbs:
+  - "*"
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - "*"
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: {{ serviceName }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.etcd-operator__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+subjects:
+- kind: ServiceAccount
+  name: {{ serviceName }}
+  namespace: {{ Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ serviceName }}
+{%- endif %}#---{%- if Values.rbac.install %}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ self.etcd-operator__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.etcd-operator__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+{%- endif %}#---{%- if Values.cluster.enabled and ( not  Release.IsInstall) -%}
+apiVersion: "etcd.database.coreos.com/v1beta2"
+kind: "EtcdCluster"
+metadata:
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.etcd-operator__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: "{{ Values.cluster.name }}"
+spec:
+  size: {{ Values.cluster.size }}
+  version: "{{ Values.cluster.version }}"
+  {%- if Values.cluster.backup.enabled %}
+  backup:
+{{ toYaml(Values.cluster.backup.config) | indent(4) }}
+  {%- endif -%}
+  {%- if Values.cluster.restore.enabled %}
+  restore:
+{{ toYaml(Values.cluster.restore.config) | indent(4) }}
+  {%- endif %}
+  pod:
+{{ toYaml(Values.cluster.pod) | indent(4) }}
+{%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.etcd-operator__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.etcd-operator__fullname() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        app: {{ self.etcd-operator__fullname() }}
+        heritage: "{{ Release.Service }}"
+        release: "{{ Release.Name }}"
+    spec:
+{%- if Values.rbac.install %}
+      serviceAccountName: {{ self.etcd-operator__fullname() }}
+{%- endif %}
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        command:
+        - "/usr/local/bin/etcd-operator"
+        - "--pv-provisioner={{ Values.cluster.backup.provisioner }}"
+{%- for key, value in Values.commandArgs.iteritems() %}
+        - "--{{ key }}={{ value }}"
+{%- endfor %}
+        env:
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}

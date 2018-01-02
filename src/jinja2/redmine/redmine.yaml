@@ -1,0 +1,152 @@
+
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: test-redmine
+spec:
+  rules:
+  - host: "redmine.cluser.local"
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: test-redmine
+          servicePort: 80
+
+
+---
+
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-redmine
+  labels:
+    app: test-redmine
+    chart: "redmine-2.0.0"
+    release: "test"
+    heritage: "redmine"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-redmine
+  labels:
+    app: test-redmine
+    chart: "redmine-2.0.0"
+    release: "test"
+    heritage: "redmine"
+type: Opaque
+data:
+  redmine-password: "CmZ1cHNlanh0am0K"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-redmine
+  labels:
+    app: test-redmine
+    chart: "redmine-2.0.0"
+    release: "test"
+    heritage: "redmine"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  selector:
+    app: test-redmine
+  loadBalancerSourceRanges: ['0.0.0.0/0']
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-redmine
+  labels:
+    app: test-redmine
+    chart: "redmine-2.0.0"
+    release: "test"
+    heritage: "redmine"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-redmine
+    spec:
+      containers:
+      - name: test-redmine
+        image: "bitnami/redmine:3.4.2-r2"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: REDMINE_DB_MYSQL
+          value: test-mariadb
+        - name: REDMINE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: REDMINE_USERNAME
+          value: "user"
+        - name: REDMINE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-redmine
+              key: redmine-password
+        - name: REDMINE_EMAIL
+          value: "user@example.com"
+        - name: REDMINE_LANG
+          value: "en"
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-redmine
+              key: smtp-password
+        - name: SMTP_TLS
+          value: ""
+        ports:
+        - name: http
+          containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        volumeMounts:
+        - name: redmine-data
+          mountPath: /bitnami/redmine
+      volumes:
+      - name: redmine-data
+        persistentVolumeClaim:
+          claimName: test-redmine

@@ -1,0 +1,143 @@
+
+
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-moodle
+  labels:
+    app: test-moodle
+    chart: "moodle-0.3.1"
+    release: "test"
+    heritage: "moodle"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-moodle
+  labels:
+    app: test-moodle
+    chart: "moodle-0.3.1"
+    release: "test"
+    heritage: "moodle"
+type: Opaque
+data:
+  moodle-password: "CmtkYXRjcHdlemgK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-moodle
+  labels:
+    app: test-moodle
+    chart: "moodle-0.3.1"
+    release: "test"
+    heritage: "moodle"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: test-moodle
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-moodle
+  labels:
+    app: test-moodle
+    chart: "moodle-0.3.1"
+    release: "test"
+    heritage: "moodle"
+spec:
+  template:
+    metadata:
+      labels:
+        app: test-moodle
+    spec:
+      containers:
+      - name: test-moodle
+        image: "bitnami/moodle:3.3.2-r1"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: MOODLE_USERNAME
+          value: "user"
+        - name: MOODLE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-moodle
+              key: moodle-password
+        - name: MOODLE_EMAIL
+          value: "user@example.com"
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-moodle
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: ""
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /login/index.php
+            port: http
+          initialDelaySeconds: 180
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /login/index.php
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: moodle-data
+          mountPath: /bitnami
+      volumes:
+      - name: moodle-data
+        persistentVolumeClaim:
+          claimName: test-moodle

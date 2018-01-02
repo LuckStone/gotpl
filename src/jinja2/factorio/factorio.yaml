@@ -1,0 +1,127 @@
+
+
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-factorio-savedgames
+  labels:
+    app: test-factorio
+    chart: "factorio-0.3.0"
+    release: "test"
+    heritage: "factorio"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: "1Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-factorio
+  labels:
+    app: test-factorio
+    chart: "factorio-0.3.0"
+    release: "test"
+    heritage: "factorio"
+type: Opaque
+data:
+  server-password: ""
+  rcon-password: ""
+  factorio-username: "eW91ci51c2VybmFtZQ=="
+  factorio-password: "eW91ci5wYXNzd29yZA=="
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-factorio
+  labels:
+    app: test-factorio
+    chart: "factorio-0.3.0"
+    release: "test"
+    heritage: "factorio"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: factorio
+    port: 34197
+    targetPort: factorio
+    protocol: UDP
+  selector:
+    app: test-factorio
+
+
+---
+
+
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-factorio
+  labels:
+    app: test-factorio
+    chart: "factorio-0.3.0"
+    release: "test"
+    heritage: "factorio"
+spec:
+  template:
+    metadata:
+      labels:
+        app: test-factorio
+    spec:
+      containers:
+      - name: test-factorio
+        image: "quay.io/games_on_k8s/factorio:0.14.22"
+        imagePullPolicy: Always
+        resources:
+          requests: {cpu: 500m, memory: 512Mi}
+        env:
+        - name: FACTORIO_SERVER_NAME
+          value: "Kubernetes Server"
+        - name: FACTORIO_DESCRIPTION
+          value: "Factorio running on Kubernetes"
+        - name: FACTORIO_PORT
+          value: "34197"
+        - name: FACTORIO_MAX_PLAYERS
+          value: "255"
+        - name: FACTORIO_IS_PUBLIC
+          value: "False"
+        - name: FACTORIO_REQUIRE_USER_VERIFICATION
+          value: "False"
+        - name: FACTORIO_ALLOW_COMMANDS
+          value: "admins-only"
+        - name: FACTORIO_NO_AUTO_PAUSE
+          value: "false"
+        - name: FACTORIO_AUTOSAVE_INTERVAL
+          value: "2"
+        - name: FACTORIO_AUTOSAVE_SLOTS
+          value: "3"
+
+        ports:
+        - name: factorio
+          containerPort: 34197
+          protocol: UDP
+        volumeMounts:
+        - name: saves
+          mountPath: /opt/factorio/saves
+        - name: mods
+          mountPath: /opt/factorio/mods
+      volumes:
+      - name: saves
+        persistentVolumeClaim:
+          claimName: test-factorio-savedgames
+      - name: mods
+        emptyDir: {}

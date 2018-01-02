@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+{%- if not Values.healthcheckHttps %}
+  - name: http
+    port: 80
+    targetPort: http
+{%- if Values.serviceType=="NodePort" and Values.nodePort %}
+    nodePort: {{ Values.nodePort }}
+{%- endif %}
+{%- else %}
+  - name: https
+    port: 443
+    targetPort: https
+{%- endif %}
+  selector:
+    app: {{ self.fullname() }}

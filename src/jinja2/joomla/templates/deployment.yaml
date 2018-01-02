@@ -1,0 +1,93 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.joomla__fullname() }}
+  labels:
+    app: {{ self.joomla__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.joomla__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.joomla__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.joomla__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.joomla__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: JOOMLA_USERNAME
+          value: {{ Values.joomlaUsername | default("", true) | quote() }}
+        - name: JOOMLA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.joomla__fullname() }}
+              key: joomla-password
+        - name: JOOMLA_EMAIL
+          value: {{ Values.joomlaEmail | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.joomla__fullname() }}
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: joomla-data
+          mountPath: /bitnami/joomla
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: joomla-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.joomla__fullname() }}-joomla
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.joomla__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}

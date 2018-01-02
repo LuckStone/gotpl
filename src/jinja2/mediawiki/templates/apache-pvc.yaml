@@ -1,0 +1,23 @@
+{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.mediawiki__fullname() }}-apache
+  labels:
+    app: {{ self.mediawiki__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+  {%- if Values.persistence.apache.storageClass %}
+    volume.beta.kubernetes.io/storage-class: {{ Values.persistence.apache.storageClass | quote() }}
+  {%- else %}
+    volume.alpha.kubernetes.io/storage-class: default
+  {%- endif %}
+spec:
+  accessModes:
+    - {{ Values.persistence.apache.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.apache.size | quote() }}
+{%- endif -%}

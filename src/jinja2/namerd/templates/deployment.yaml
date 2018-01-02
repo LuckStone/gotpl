@@ -1,0 +1,46 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.namerd__fullname() }}
+  labels:
+    app: {{ self.namerd__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.namerd__fullname() }}
+    spec:
+      volumes:
+      - name: {{ self.namerd__fullname() }}-config
+        configMap:
+          name: "{{ self.namerd__fullname() }}-config"
+      containers:
+      - name: {{ self.namerd__fullname() }}
+        image: "{{ Values.namerd.image.repository }}"
+        imagePullPolicy: {{ Values.namerd.image.pullPolicy | default("", true) | quote() }}
+        args:
+        - /io.buoyant/namerd/config/config.yaml
+        ports:
+        - name: sync
+          containerPort: {{ Values.service.syncPort }}
+        - name: api
+          containerPort: {{ Values.service.apiPort }}
+        volumeMounts:
+        - name: "{{ self.namerd__fullname() }}-config"
+          mountPath: "/io.buoyant/namerd/config"
+          readOnly: true
+        resources:
+{{ toYaml(Values.namerd.resources) | indent(12) }}
+      - name: kubectl
+        image: "{{ Values.kubectl.image.repository }}"
+        imagePullPolicy: {{ Values.kubectl.image.pullPolicy | default("", true) | quote() }}
+        args:
+        - "proxy"
+        - "-p"
+        - "8001"
+        resources:
+{{ toYaml(Values.kubectl.resources) | indent(12) }}

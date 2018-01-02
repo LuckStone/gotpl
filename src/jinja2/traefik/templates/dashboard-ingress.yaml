@@ -1,0 +1,25 @@
+{%- if Values.dashboard.enabled %}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.fullname() }}-dashboard
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+  {%- if Values.dashboard.ingress %}
+  {%- for key, value in Values.dashboard.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  {%- endif %}
+spec:
+  rules:
+  - host: {{ Values.dashboard.domain }}
+    http:
+      paths:
+      - backend:
+          serviceName: {{ self.fullname() }}-dashboard
+          servicePort: 80
+{%- endif %}

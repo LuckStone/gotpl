@@ -1,0 +1,142 @@
+{%- if Values.controller.kind=="Deployment" %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.controller.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.controller__fullname() }}
+spec:
+  replicas: {{ Values.controller.replicaCount }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: ""
+      {%- if Values.controller.podAnnotations %}
+{{ toYaml(Values.controller.podAnnotations) | indent(8) }}
+      {%- endif %}
+      labels:
+        app: {{ self.name() }}
+        component: "{{ Values.controller.name }}"
+        release: {{ Release.Name }}
+        {%- if Values.controller.podLabels %}
+{{ toYaml(Values.controller.podLabels) | indent(8) }}
+        {%- endif %}
+    spec:
+      containers:
+        - name: {{ self.name() }}-{{ Values.controller.name }}
+          image: "{{ Values.controller.image.repository }}:{{ Values.controller.image.tag }}"
+          imagePullPolicy: "{{ Values.controller.image.pullPolicy }}"
+          args:
+            - /nginx-ingress-controller
+            - --default-backend-service={%- if Values.defaultBackend.enabled %}{{ Release.Namespace }}/{{ self.defaultBackend__fullname() }}{%- else %}{{ Values.controller.defaultBackendService }}{%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) and Values.controller.publishService.enabled %}
+            - --publish-service={{ self.controller__publishServicePath() }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --election-id={{ Values.controller.electionID }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --ingress-class={{ Values.controller.ingressClass }}
+          {%- endif %}
+          {%- if ("0.9"==Values.controller.image.tag) %}
+            - --configmap={{ Release.Namespace }}/{{ self.controller__fullname() }}
+          {%- else %}
+            - --nginx-configmap={{ Release.Namespace }}/{{ self.controller__fullname() }}
+          {%- endif %}
+          {%- if Values.tcp %}
+            - --tcp-services-configmap={{ Release.Namespace }}/{{ self.fullname() }}-tcp
+          {%- endif %}
+          {%- if Values.udp %}
+            - --udp-services-configmap={{ Release.Namespace }}/{{ self.fullname() }}-udp
+          {%- endif %}
+          {%- if Values.controller.scope.enabled %}
+            - --watch-namespace={{ Values.controller.scope.namespace | default(Release.Namespace, true) }}
+          {%- endif %}
+          {%- for key, value in Values.controller.extraArgs.iteritems() %}
+            {%- if value %}
+            - --{{ key }}={{ value }}
+            {%- else %}
+            - --{{ key }}
+            {%- endif %}
+          {%- endfor %}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+            initialDelaySeconds: 10
+            timeoutSeconds: 1
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          {%- if Values.controller.stats.enabled %}
+            - name: stats
+              containerPort: 18080
+              protocol: TCP
+          {%- endif %}
+          {%- for key, value in Values.tcp.iteritems() %}
+            - name: "{{ key }}-tcp"
+              containerPort: {{ key }}
+              protocol: TCP
+          {%- endfor %}
+          {%- for key, value in Values.udp.iteritems() %}
+            - name: "{{ key }}-udp"
+              containerPort: {{ key }}
+              protocol: UDP
+          {%- endfor %}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 10254
+              scheme: HTTP
+          resources:
+{{ toYaml(Values.controller.resources) | indent(12) }}
+      {%- if Values.controller.stats.enabled %}
+        - name: {{ self.name() }}-{{ Values.statsExporter.name }}
+          image: "{{ Values.statsExporter.image.repository }}:{{ Values.statsExporter.image.tag }}"
+          imagePullPolicy: "{{ Values.statsExporter.image.pullPolicy }}"
+          env:
+            - name: METRICS_ADDR
+              value: ":9913"
+            - name: METRICS_ENDPOINT
+              value: "{{ Values.statsExporter.endpoint }}"
+            - name: METRICS_NS
+              value: "{{ Values.statsExporter.metricsNamespace }}"
+            - name: NGINX_STATUS
+              value: "{{ Values.statsExporter.statusPage }}"
+          ports:
+            - name: metrics
+              containerPort: 9913
+              protocol: TCP
+          resources:
+{{ toYaml(Values.statsExporter.resources) | indent(12) }}
+      {%- endif %}
+      hostNetwork: {{ Values.controller.hostNetwork }}
+    {%- if Values.controller.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.controller.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.controller.tolerations %}
+      tolerations:
+{{ toYaml(Values.controller.tolerations) | indent(8) }}
+    {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      terminationGracePeriodSeconds: 60
+{%- endif %}

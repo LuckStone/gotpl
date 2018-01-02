@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.opencart__fullname() }}
+  labels:
+    app: {{ self.opencart__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerIP: {{ Values.opencartLoadBalancerIP | default("", true) | quote() }}
+  {%- endif %}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: {{ self.opencart__fullname() }}

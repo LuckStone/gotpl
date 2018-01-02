@@ -1,0 +1,104 @@
+{%- if self.host() -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      initContainers:
+      - name: volume-permissions
+        image: "{{ Values.volumePermissions.image.name }}:{{ Values.volumePermissions.image.tag }}"
+        imagePullPolicy: {{ Values.volumePermissions.image.pullPolicy | default("", true) | quote() }}
+        command: ['sh', '-c', 'chmod -R g+rwX /bitnami']
+        volumeMounts:
+        - mountPath: /bitnami
+          name: ghost-data
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: GHOST_HOST
+          value: {{ self.host()  | quote() }}
+        - name: GHOST_PORT_NUMBER
+          value: {{ Values.ghostPort | default("80", true) | quote() }}
+        - name: GHOST_USERNAME
+          value: {{ Values.ghostUsername | default("", true) | quote() }}
+        - name: GHOST_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: ghost-password
+        - name: GHOST_EMAIL
+          value: {{ Values.ghostEmail | default("", true) | quote() }}
+        - name: BLOG_TITLE
+          value: {{ Values.ghostBlogTitle | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: smtp-password
+        - name: SMTP_SERVICE
+          value: {{ Values.smtpService | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 2368
+        livenessProbe:
+          httpGet:
+            path: /ghost
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /ghost
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: ghost-data
+          mountPath: /bitnami/ghost
+      volumes:
+      - name: ghost-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif -%}

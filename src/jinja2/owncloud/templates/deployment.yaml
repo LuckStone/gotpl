@@ -1,0 +1,88 @@
+{%- if self.host() -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: OWNCLOUD_HOST
+          value: {{ self.host()  | quote() }}
+        - name: OWNCLOUD_USERNAME
+          value: {{ Values.owncloudUsername | default("", true) | quote() }}
+        - name: OWNCLOUD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: owncloud-password
+        - name: OWNCLOUD_EMAIL
+          value: {{ Values.owncloudEmail | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /status.php
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /status.php
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: owncloud-data
+          mountPath: /bitnami/owncloud
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: owncloud-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-owncloud
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif -%}

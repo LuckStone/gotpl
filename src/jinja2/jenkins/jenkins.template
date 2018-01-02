@@ -1,0 +1,516 @@
+{%- if Values.rbac.install %}
+{%- set serviceName =  self.jenkins__fullname() -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ serviceName }}-role-binding
+  labels:
+    app: {{ serviceName }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ Values.rbac.roleRef }}
+subjects:
+- kind: ServiceAccount
+  name: {{ serviceName }}
+  namespace: {{ Release.Namespace }}
+{%- endif %}#---{%- if  not  Values.Master.CustomConfigMap %}
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.jenkins__fullname() }}
+data:
+  config.xml: |-
+    <?xml version='1.0' encoding='UTF-8'?>
+    <hudson>
+      <disabledAdministrativeMonitors/>
+      <version>{{ Values.Master.ImageTag }}</version>
+      <numExecutors>0</numExecutors>
+      <mode>NORMAL</mode>
+      <useSecurity>{{ Values.Master.UseSecurity }}</useSecurity>
+      <authorizationStrategy class="hudson.security.FullControlOnceLoggedInAuthorizationStrategy">
+        <denyAnonymousReadAccess>true</denyAnonymousReadAccess>
+      </authorizationStrategy>
+      <securityRealm class="hudson.security.LegacySecurityRealm"/>
+      <disableRememberMe>false</disableRememberMe>
+      <projectNamingStrategy class="jenkins.model.ProjectNamingStrategy$DefaultProjectNamingStrategy"/>
+      <workspaceDir>${JENKINS_HOME}/workspace/${ITEM_FULLNAME}</workspaceDir>
+      <buildsDir>${ITEM_ROOTDIR}/builds</buildsDir>
+      <markupFormatter class="hudson.markup.EscapedMarkupFormatter"/>
+      <jdks/>
+      <viewsTabBar class="hudson.views.DefaultViewsTabBar"/>
+      <myViewsTabBar class="hudson.views.DefaultMyViewsTabBar"/>
+      <clouds>
+        <org.csanchez.jenkins.plugins.kubernetes.KubernetesCloud plugin="kubernetes@0.11">
+          <name>kubernetes</name>
+          <templates>
+{%- if Values.Agent.Enabled %}
+            <org.csanchez.jenkins.plugins.kubernetes.PodTemplate>
+              <inheritFrom></inheritFrom>
+              <name>default</name>
+              <instanceCap>2147483647</instanceCap>
+              <idleMinutes>0</idleMinutes>
+              <label>{{ Release.Name }}-{{ Values.Agent.Component }}</label>
+              <nodeSelector>
+                {%- for key, value in Values.Agent.NodeSelector.iteritems() %}
+                  {{- key }}={{ value }},
+                {%- endfor %}</nodeSelector>
+              <volumes>
+{%- for index, volume in Values.Agent.volumes.iteritems() %}
+                <org.csanchez.jenkins.plugins.kubernetes.volumes.{{ volume.type }}Volume>
+{%- range key, value := volume %}{%- if  not  (key=="type") %}
+                  <{{ key }}>{{ value }}</{{ key }}>
+{%- endif %}{%- endif %}
+                </org.csanchez.jenkins.plugins.kubernetes.volumes.{{ volume.type }}Volume>
+{%- endfor %}
+              </volumes>
+              <containers>
+                <org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate>
+                  <name>jnlp</name>
+                  <image>{{ Values.Agent.Image }}:{{ Values.Agent.ImageTag }}</image>
+{%- if Values.Agent.Privileged %}
+                  <privileged>true</privileged>
+{%- else %}
+                  <privileged>false</privileged>
+{%- endif %}
+                  <alwaysPullImage>{{ Values.Agent.AlwaysPullImage }}</alwaysPullImage>
+                  <workingDir>/home/jenkins</workingDir>
+                  <command></command>
+                  <args>${computer.jnlpmac} ${computer.name}</args>
+                  <ttyEnabled>false</ttyEnabled>
+                  <resourceRequestCpu>{{ Values.Agent.Cpu }}</resourceRequestCpu>
+                  <resourceRequestMemory>{{ Values.Agent.Memory }}</resourceRequestMemory>
+                  <resourceLimitCpu>{{ Values.Agent.Cpu }}</resourceLimitCpu>
+                  <resourceLimitMemory>{{ Values.Agent.Memory }}</resourceLimitMemory>
+                  <envVars>
+                    <org.csanchez.jenkins.plugins.kubernetes.ContainerEnvVar>
+                      <key>JENKINS_URL</key>
+                      <value>http://{{ self.jenkins__fullname() }}:{{ Values.Master.ServicePort }}{{ Values.Master.JenkinsUriPrefix | default("", true) }}</value>
+                    </org.csanchez.jenkins.plugins.kubernetes.ContainerEnvVar>
+                  </envVars>
+                </org.csanchez.jenkins.plugins.kubernetes.ContainerTemplate>
+              </containers>
+              <envVars/>
+              <annotations/>
+              <imagePullSecrets/>
+              <nodeProperties/>
+            </org.csanchez.jenkins.plugins.kubernetes.PodTemplate>
+{%- endif -%}
+          </templates>
+          <serverUrl>https://kubernetes.default</serverUrl>
+          <skipTlsVerify>false</skipTlsVerify>
+          <namespace>{{ Release.Namespace }}</namespace>
+          <jenkinsUrl>http://{{ self.jenkins__fullname() }}:{{ Values.Master.ServicePort }}{{ Values.Master.JenkinsUriPrefix | default("", true) }}</jenkinsUrl>
+          <jenkinsTunnel>{{ self.jenkins__fullname() }}-agent:50000</jenkinsTunnel>
+          <containerCap>10</containerCap>
+          <retentionTimeout>5</retentionTimeout>
+          <connectTimeout>0</connectTimeout>
+          <readTimeout>0</readTimeout>
+        </org.csanchez.jenkins.plugins.kubernetes.KubernetesCloud>
+      </clouds>
+      <quietPeriod>5</quietPeriod>
+      <scmCheckoutRetryCount>0</scmCheckoutRetryCount>
+      <views>
+        <hudson.model.AllView>
+          <owner class="hudson" reference="../../.."/>
+          <name>All</name>
+          <filterExecutors>false</filterExecutors>
+          <filterQueue>false</filterQueue>
+          <properties class="hudson.model.View$PropertyList"/>
+        </hudson.model.AllView>
+      </views>
+      <primaryView>All</primaryView>
+      <slaveAgentPort>50000</slaveAgentPort>
+      <label></label>
+      <nodeProperties/>
+      <globalNodeProperties/>
+      <noUsageStatistics>true</noUsageStatistics>
+    </hudson>
+{%- if Values.Master.ScriptApproval %}
+  scriptapproval.xml: |-
+    <?xml version='1.0' encoding='UTF-8'?>
+    <scriptApproval plugin="script-security@1.27">
+      <approvedScriptHashes/>
+      <approvedSignatures>
+{%- for key, val in Values.Master.ScriptApproval.iteritems() %}
+        <string>{{ val }}</string>
+{%- endfor %}
+      </approvedSignatures>
+      <aclApprovedSignatures/>
+      <approvedClasspathEntries/>
+      <pendingScripts/>
+      <pendingSignatures/>
+      <pendingClasspathEntries/>
+    </scriptApproval>
+{%- endif %}
+  apply_config.sh: |-
+    mkdir -p /usr/share/jenkins/ref/secrets/;
+    echo "false" > /usr/share/jenkins/ref/secrets/slave-to-master-security-kill-switch;
+    cp -n /var/jenkins_config/config.xml /var/jenkins_home;
+{%- if Values.Master.InstallPlugins %}
+    cp /var/jenkins_config/plugins.txt /var/jenkins_home;
+    rm /usr/share/jenkins/ref/plugins/*.lock
+    /usr/local/bin/install-plugins.sh `echo $(cat /var/jenkins_home/plugins.txt)`;
+{%- endif %}
+{%- if Values.Master.ScriptApproval %}
+    cp -n /var/jenkins_config/scriptapproval.xml /var/jenkins_home/scriptApproval.xml;
+{%- endif %}
+{%- if Values.Master.InitScripts %}
+    mkdir -p /var/jenkins_home/init.groovy.d/;
+    cp -n /var/jenkins_config/*.groovy /var/jenkins_home/init.groovy.d/
+{%- endif %}
+{%- for key, val in Values.Master.InitScripts.iteritems() %}
+  init{{ key }}.groovy: |-
+{{ val | indent(4) }}
+{%- endfor %}
+  plugins.txt: |-
+{%- if Values.Master.InstallPlugins %}
+{%- for index, val in Values.Master.InstallPlugins.iteritems() %}
+{{ val | indent(4) }}
+{%- endfor %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.jenkins__fullname() }}-tests
+data:
+  run.sh: |-
+    @test "Testing Jenkins UI is accessible" {
+      curl --retry 12 --retry-delay 10 {{ Release.Name }}-jenkins:8080{{ Values.Master.JenkinsUriPrefix | default("", true) }}/login
+    }
+#---{%- if Values.Master.HostName %}
+apiVersion: {{ Values.NetworkPolicy.ApiVersion }}
+kind: Ingress
+metadata:
+{%- if Values.Master.Ingress.Annotations %}
+  annotations:
+{{ toYaml(Values.Master.Ingress.Annotations) | indent(4) }}
+{%- endif %}
+  name: {{ self.jenkins__fullname() }}
+spec:
+  rules:
+  - host: {{ Values.Master.HostName | quote() }}
+    http:
+      paths:
+      - backend:
+          serviceName: {{ self.jenkins__fullname() }}
+          servicePort: {{ Values.Master.ServicePort }}
+{%- if Values.Master.Ingress.TLS %}
+  tls:
+{{ toYaml(Values.Master.Ingress.TLS) | indent(4) }}
+{%- endif -%}
+{%- endif %}
+#---{%- if Values.NetworkPolicy.Enabled %}
+kind: NetworkPolicy
+apiVersion: {{ Values.NetworkPolicy.ApiVersion }}
+metadata:
+  name: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  podSelector:
+    matchLabels:
+      component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  ingress:
+    # Allow web access to the UI
+    - ports:
+      - port: {{ Values.Master.ContainerPort }}
+    # Allow inbound connections from slave
+    - from:
+      - podSelector:
+          matchLabels:
+            "jenkins/{{ Release.Name }}-{{ Values.Agent.Component }}": "true"
+      ports:
+      - port: {{ Values.Master.SlaveListenerPort }}
+{%- if Values.Agent.Enabled %}
+---
+kind: NetworkPolicy
+apiVersion: {{ Values.NetworkPolicy.ApiVersion }}
+metadata:
+  name: "{{ Release.Name }}-{{ Values.Agent.Component }}"
+spec:
+  podSelector:
+    matchLabels:
+      # DefaultDeny
+      "jenkins/{{ Release.Name }}-{{ Values.Agent.Component }}": "true"
+{%- endif %}
+{%- endif %}
+#---{%- if Values.Persistence.Enabled and ( not  Values.Persistence.ExistingClaim) -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.jenkins__fullname() }}
+  labels:
+    app: {{ self.jenkins__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.Persistence.AccessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.Persistence.Size | quote() }}
+{%- if Values.Persistence.StorageClass %}
+{%- if ("-"==Values.Persistence.StorageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.Persistence.StorageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---{%- if Values.Master.UseSecurity %}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.jenkins__fullname() }}
+  labels:
+    app: {{ self.jenkins__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.Master.AdminPassword %}
+  jenkins-admin-password: {{ Values.Master.AdminPassword | b64enc() | quote() }}
+  {%- else %}
+  jenkins-admin-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  jenkins-admin-user: {{ Values.Master.AdminUser | b64enc() | quote() }}
+{%- endif %}#---{%- if Values.rbac.install %}
+{%- set serviceName =  self.jenkins__fullname() -%}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ serviceName }}
+  labels:
+    app: {{ serviceName }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- endif %}#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.jenkins__fullname() }}-agent
+  labels:
+    app: {{ self.jenkins__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  ports:
+    - port: {{ Values.Master.SlaveListenerPort }}
+      targetPort: {{ Values.Master.SlaveListenerPort }}
+      name: slavelistener
+  selector:
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  type: ClusterIP
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "jenkins.fullname" . }}
+  labels:
+    app: {{ self.jenkins__fullname() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+{%- if Values.Master.ServiceAnnotations %}
+  annotations:
+{{ toYaml(Values.Master.ServiceAnnotations) | indent(4) }}
+{%- endif %}
+spec:
+  ports:
+    - port: {{ Values.Master.ServicePort }}
+      name: http
+      targetPort: {{ Values.Master.ContainerPort }}
+      {{ if (and (eq Values.Master.ServiceType "NodePort") (not (empty Values.Master.NodePort))) }}
+      nodePort: {{ Values.Master.NodePort }}
+      {%- endif %}
+  selector:
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  type: {{ Values.Master.ServiceType }}
+  {{ if eq Values.Master.ServiceType "LoadBalancer" }}
+  loadBalancerSourceRanges: {{ Values.Master.LoadBalancerSourceRanges }}
+  {{ if Values.Master.LoadBalancerIP }}
+  loadBalancerIP: {{ Values.Master.LoadBalancerIP }}
+  {%- endif %}
+  {%- endif %}
+#---apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ Release.Name }}-ui-test-{{ randAlphaNum(5) | lower() }}"
+  annotations:
+    "helm.sh/hook": test-success
+spec:
+  {%- if Values.Master.NodeSelector %}
+  nodeSelector:
+{{ toYaml(Values.Master.NodeSelector) | indent(4) }}
+  {%- endif %}
+  {%- if Values.Master.Tolerations %}
+  tolerations:
+{{ toYaml(Values.Master.Tolerations) | indent(4) }}
+  {%- endif %}
+  initContainers:
+    - name: "test-framework"
+      image: "dduportal/bats:0.4.0"
+      command:
+      - "bash"
+      - "-c"
+      - |
+        set -ex
+        # copy bats to tools dir
+        cp -R /usr/local/libexec/ /tools/bats/
+      volumeMounts:
+      - mountPath: /tools
+        name: tools
+  containers:
+    - name: {{ Release.Name }}-ui-test
+      image: {{ Values.Master.Image }}:{{ Values.Master.ImageTag }}
+      command: ["/tools/bats/bats", "-t", "/tests/run.sh"]
+      volumeMounts:
+      - mountPath: /tests
+        name: tests
+        readOnly: true
+      - mountPath: /tools
+        name: tools
+  volumes:
+  - name: tests
+    configMap:
+      name: {{ self.jenkins__fullname() }}-tests
+  - name: tools
+    emptyDir: {}
+  restartPolicy: Never
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.jenkins__fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Name }}"
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  template:
+    metadata:
+      labels:
+        app: {{ self.jenkins__fullname() }}
+        heritage: {{ Release.Service | quote() }}
+        release: {{ Release.Name | quote() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+      annotations:
+        checksum/config: ""
+    spec:
+      {%- if Values.Master.NodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.Master.NodeSelector) | indent(8) }}
+      {%- endif %}
+      {%- if Values.Master.Tolerations %}
+      tolerations:
+{{ toYaml(Values.Master.Tolerations) | indent(8) }}
+      {%- endif %}
+      securityContext:
+        runAsUser: 0
+      serviceAccountName: {%- if Values.rbac.install %}{{ self.jenkins__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      initContainers:
+        - name: "copy-default-config"
+          image: "{{ Values.Master.Image }}:{{ Values.Master.ImageTag }}"
+          imagePullPolicy: "{{ Values.Master.ImagePullPolicy }}"
+          command: [ "sh", "/var/jenkins_config/apply_config.sh" ]
+          volumeMounts:
+            -
+              mountPath: /var/jenkins_home
+              name: jenkins-home
+            -
+              mountPath: /var/jenkins_config
+              name: jenkins-config
+            -
+              mountPath: /usr/share/jenkins/ref/plugins/
+              name: plugin-dir
+            -
+              mountPath: /usr/share/jenkins/ref/secrets/
+              name: secrets-dir
+      containers:
+        - name: {{ self.jenkins__fullname() }}
+          image: "{{ Values.Master.Image }}:{{ Values.Master.ImageTag }}"
+          imagePullPolicy: "{{ Values.Master.ImagePullPolicy }}"
+          {%- if Values.Master.UseSecurity %}
+          args: [ "--argumentsRealm.passwd.$(ADMIN_USER)=$(ADMIN_PASSWORD)",  "--argumentsRealm.roles.$(ADMIN_USER)=admin"]
+          {%- endif %}
+          env:
+            - name: JAVA_OPTS
+              value: "{{ Values.Master.JavaOpts | default("", true) }}"
+            - name: JENKINS_OPTS
+              value: "{%- if Values.Master.JenkinsUriPrefix %}--prefix={{ Values.Master.JenkinsUriPrefix }} {%- endif %}{{ Values.Master.JenkinsOpts | default("", true) }}"
+            {%- if Values.Master.UseSecurity %}
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.jenkins__fullname() }}
+                  key: jenkins-admin-password
+            - name: ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.jenkins__fullname() }}
+                  key: jenkins-admin-user
+            {%- endif %}
+          ports:
+            - containerPort: {{ Values.Master.ContainerPort }}
+              name: http
+            - containerPort: {{ Values.Master.SlaveListenerPort }}
+              name: slavelistener
+            {%- if Values.Master.JMXPort %}
+            - containerPort: {{ Values.Master.JMXPort }}
+              name: jmx
+            {%- endif %}
+          resources:
+            requests:
+              cpu: "{{ Values.Master.Cpu }}"
+              memory: "{{ Values.Master.Memory }}"
+          volumeMounts:
+{%- if Values.Persistence.mounts %}
+{{ toYaml(Values.Persistence.mounts) | indent(12) }}
+{%- endif %}
+            -
+              mountPath: /var/jenkins_home
+              name: jenkins-home
+              readOnly: false
+            -
+              mountPath: /var/jenkins_config
+              name: jenkins-config
+              readOnly: true
+            -
+              mountPath: /usr/share/jenkins/ref/plugins/
+              name: plugin-dir
+              readOnly: false
+            -
+              mountPath: /usr/share/jenkins/ref/secrets/
+              name: secrets-dir
+              readOnly: false
+      volumes:
+{%- if Values.Persistence.volumes %}
+{{ toYaml(Values.Persistence.volumes) | indent(6) }}
+{%- endif %}
+      - name: jenkins-config
+        configMap:
+          name: {{ self.jenkins__fullname() }}
+      - name: plugin-dir
+        emptyDir: {}
+      - name: secrets-dir
+        emptyDir: {}
+      - name: jenkins-home
+      {%- if Values.Persistence.Enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.Persistence.ExistingClaim | default  (self.jenkins__fullname()) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

@@ -1,0 +1,49 @@
+{%- if Values.alertmanager.enabled -%}
+apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.alertmanager.service.annotations %}
+  annotations:
+{{ toYaml(Values.alertmanager.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.alertmanager.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+{%- if Values.alertmanager.service.labels %}
+{{ toYaml(Values.alertmanager.service.labels) | indent(4) }}
+{%- endif %}
+  name: {{ self.prometheus__alertmanager__fullname() }}
+spec:
+{%- if Values.alertmanager.service.clusterIP %}
+  clusterIP: {{ Values.alertmanager.service.clusterIP }}
+{%- endif %}
+{%- if Values.alertmanager.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.alertmanager.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.alertmanager.service.loadBalancerIP %}
+  loadBalancerIP: {{ Values.alertmanager.service.loadBalancerIP }}
+{%- endif %}
+{%- if Values.alertmanager.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+  {%- for cidr in Values.alertmanager.service.loadBalancerSourceRanges %}
+    - {{ cidr }}
+  {%- endfor %}
+{%- endif %}
+  ports:
+    - name: http
+      port: {{ Values.alertmanager.service.servicePort }}
+      protocol: TCP
+      targetPort: 9093
+    {%- if Values.alertmanager.service.nodePort %}
+      nodePort: {{ Values.alertmanager.service.nodePort }}
+    {%- endif %}
+  selector:
+    app: {{ self.prometheus__name() }}
+    component: "{{ Values.alertmanager.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.alertmanager.service.type }}"
+{%- endif %}

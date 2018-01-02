@@ -1,0 +1,89 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.phpbb__fullname() }}
+  labels:
+    app: {{ self.phpbb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.phpbb__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.phpbb__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.phpbb__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.phpbb__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: PHPBB_USERNAME
+          value: {{ Values.phpbbUser | default("", true) | quote() }}
+        - name: PHPBB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.phpbb__fullname() }}
+              key: phpbb-password
+        - name: PHPBB_EMAIL
+          value: {{ Values.phpbbEmail | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.phpbb__fullname() }}
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /ucp.php
+            port: http
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /ucp.php
+            port: http
+          initialDelaySeconds: 30
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: phpbb-data
+          mountPath: /bitnami/phpbb
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: phpbb-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.phpbb__fullname() }}-phpbb
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.phpbb__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}

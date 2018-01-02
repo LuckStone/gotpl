@@ -1,0 +1,193 @@
+{%- if Values.persistence.dataDir.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.minecraft__fullname() }}-datadir
+  labels:
+    app: {{ self.minecraft__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+  {%- if Values.persistence.storageClass %}
+    volume.beta.kubernetes.io/storage-class: {{ Values.persistence.storageClass | quote() }}
+  {%- else %}
+    volume.alpha.kubernetes.io/storage-class: default
+  {%- endif %}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ Values.persistence.dataDir.Size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.minecraft__fullname() }}
+  labels:
+    app: {{ self.minecraft__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  rcon-password: {{ Values.minecraftServer.rcon.password | default("", true) | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.minecraft__fullname() }}
+  labels:
+    app: {{ self.minecraft__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.minecraftServer.serviceType }}
+  ports:
+  - name: minecraft
+    port: 25565
+    targetPort: minecraft
+    protocol: TCP
+  selector:
+    app: {{ self.minecraft__fullname() }}
+#---{%- if Values.minecraftServer.rcon.enabled | default("", true) %}
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ self.minecraft__fullname() }}-rcon"
+  labels:
+    app: {{ self.minecraft__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.minecraftServer.rcon.serviceType }}
+  ports:
+  - name: rcon
+    port: {{ Values.minecraftServer.rcon.port }}
+    targetPort: rcon
+    protocol: TCP
+  selector:
+    app: {{ self.minecraft__fullname() }}
+{%- endif %}
+#---{%- if ( "%s" | format(Values.minecraftServer.eula) )!="FALSE" %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.minecraft__fullname() }}
+  labels:
+    app: {{ self.minecraft__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.minecraft__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.minecraft__fullname() }}
+        image: "{{ Values.image }}:{{ Values.imageTag }}"
+        imagePullPolicy: Always
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        env:
+        - name: EULA
+          value: {{ Values.minecraftServer.eula | quote() }}
+        - name: VERSION
+          value: {{ Values.minecraftServer.version | quote() }}
+        - name: DIFFICULTY
+          value: {{ Values.minecraftServer.difficulty | quote() }}
+        - name: WHITELIST
+          value: {{ Values.minecraftServer.whitelist | default("", true) | quote() }}
+        - name: OPS
+          value: {{ Values.minecraftServer.ops | default("", true) | quote() }}
+        - name: ICON
+          value: {{ Values.minecraftServer.icon | default("", true) | quote() }}
+        - name: MAX_PLAYERS
+          value: {{ Values.minecraftServer.maxPlayers | quote() }}
+        - name: MAX_WORLD_SIZE
+          value: {{ Values.minecraftServer.maxWorldSize | quote() }}
+        - name: ALLOW_NETHER
+          value: {{ Values.minecraftServer.allowNether | quote() }}
+        - name: ANNOUNCE_PLAYER_ACHIEVEMENTS
+          value: {{ Values.minecraftServer.announcePlayerAchievements | quote() }}
+        - name: ENABLE_COMMAND_BLOCK
+          value: {{ Values.minecraftServer.enableCommandBlock | quote() }}
+        - name: FORCE_gameMode
+          value: {{ Values.minecraftServer.forcegameMode | quote() }}
+        - name: GENERATE_STRUCTURES
+          value: {{ Values.minecraftServer.generateStructures | quote() }}
+        - name: HARDCORE
+          value: {{ Values.minecraftServer.hardcore | quote() }}
+        - name: MAX_BUILD_HEIGHT
+          value: {{ Values.minecraftServer.maxBuildHeight | quote() }}
+        - name: MAX_TICK_TIME
+          value: {{ Values.minecraftServer.maxTickTime | quote() }}
+        - name: SPAWN_ANIMALS
+          value: {{ Values.minecraftServer.spawnAnimals | quote() }}
+        - name: SPAWN_MONSTERS
+          value: {{ Values.minecraftServer.spawnMonsters | quote() }}
+        - name: SPAWN_NPCS
+          value: {{ Values.minecraftServer.spawnNPCs | quote() }}
+        - name: VIEW_DISTANCE
+          value: {{ Values.minecraftServer.viewDistance | quote() }}
+        - name: SEED
+          value: {{ Values.minecraftServer.levelSeed | default("", true) | quote() }}
+        - name: MODE
+          value: {{ Values.minecraftServer.gameMode | quote() }}
+        - name: MOTD
+          value: {{ Values.minecraftServer.motd | quote() }}
+        - name: PVP
+          value: {{ Values.minecraftServer.pvp | quote() }}
+        - name: LEVEL_TYPE
+          value: {{ Values.minecraftServer.levelType | quote() }}
+        - name: GENERATOR_SETTINGS
+          value: {{ Values.minecraftServer.generatorSettings | default("", true) | quote() }}
+        - name: LEVEL
+          value: {{ Values.minecraftServer.worldSaveName | quote() }}
+        - name: ONLINE_MODE
+          value: {{ Values.minecraftServer.onlineMode | quote() }}
+        - name: JVM_OPTS
+          value: {{ Values.minecraftServer.jvmOpts | quote() }}
+
+        {%- if Values.minecraftServer.rcon.enabled %}
+        - name: ENABLE_RCON
+          value: "true"
+        - name: RCON_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.minecraft__fullname() }}
+              key: rcon-password
+        {%- endif %}
+
+        ports:
+        - name: minecraft
+          containerPort: 25565
+          protocol: TCP
+        {%- if Values.minecraftServer.rcon.enabled %}
+        - name: rcon
+          containerPort: {{ Values.minecraftServer.rcon.port }}
+          protocol: TCP
+        {%- endif %}
+        volumeMounts:
+        - name: datadir
+          mountPath: /data
+      volumes:
+      - name: datadir
+      {%- if Values.persistence.dataDir.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.minecraft__fullname() }}-datadir
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif %}

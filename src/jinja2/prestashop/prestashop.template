@@ -1,0 +1,196 @@
+{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.prestashop__fullname() }}-apache
+  labels:
+    app: {{ self.prestashop__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.apache.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.apache.size | quote() }}
+{%- if Values.persistence.apache.storageClass %}
+{%- if ("-"==Values.persistence.apache.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.apache.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.prestashop__fullname() }}-prestashop
+  labels:
+    app: {{ self.prestashop__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.prestashop.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.prestashop.size | quote() }}
+{%- if Values.persistence.prestashop.storageClass %}
+{%- if ("-"==Values.persistence.prestashop.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.prestashop.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.prestashop__fullname() }}
+  labels:
+    app: {{ self.prestashop__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.prestashopPassword %}
+  prestashop-password: {{ Values.prestashopPassword | default("", true) | b64enc() | quote() }}
+  {%- else %}
+  prestashop-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  smtp-password: {{ Values.smtpPassword | default("", true) | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.prestashop__fullname() }}
+  labels:
+    app: {{ self.prestashop__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+    service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerIP: {{ Values.prestashopLoadBalancerIP | default("", true) }}
+  {%- endif %}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: {{ self.prestashop__fullname() }}
+#---{%- if self.prestashop__host() -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.prestashop__fullname() }}
+  labels:
+    app: {{ self.prestashop__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.prestashop__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.prestashop__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.prestashop__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.prestashop__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: PRESTASHOP_HOST
+          value: {{ self.prestashop__host()  | quote() }}
+        - name: PRESTASHOP_USERNAME
+          value: {{ Values.prestashopUsername | default("", true) | quote() }}
+        - name: PRESTASHOP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.prestashop__fullname() }}
+              key: prestashop-password
+        - name: PRESTASHOP_EMAIL
+          value: {{ Values.prestashopEmail | default("", true) | quote() }}
+        - name: PRESTASHOP_FIRST_NAME
+          value: {{ Values.prestashopFirstName | default("", true) | quote() }}
+        - name: PRESTASHOP_LAST_NAME
+          value: {{ Values.prestashopLastName | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.prestashop__fullname() }}
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /login
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.prestashop__host()  | quote() }}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /login
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.prestashop__host()  | quote() }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: prestashop-data
+          mountPath: /bitnami/prestashop
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: prestashop-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.prestashop__fullname() }}-prestashop
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.prestashop__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif -%}

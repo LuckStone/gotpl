@@ -1,0 +1,294 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.rethinkdb__fullname() }}
+  labels:
+    app: {{ self.rethinkdb__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  rethinkdb-password: {{ Values.rethinkdbPassword | b64enc() | quote() }}
+  {%- if Values.proxy.driverTLS.enabled %}
+  driver-key.pem: {{ Values.proxy.driverTLS.key | b64enc() | quote() }}
+  driver-cert.pem: {{ Values.proxy.driverTLS.cert | b64enc() | quote() }}
+  {%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ self.rethinkdb__fullname() }}-admin"
+  labels:
+    app: "{{ self.rethinkdb__name() }}-admin"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ Values.ports.admin }}
+      targetPort: admin
+  selector:
+    app: "{{ self.rethinkdb__name() }}-proxy"
+    release: {{ Release.Name | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ self.rethinkdb__fullname() }}-cluster"
+  labels:
+    app: "{{ self.rethinkdb__name() }}-cluster"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  {%- if Values.cluster.service.annotations %}
+{{ toYaml(Values.cluster.service.annotations) | indent(4) }}
+  {%- endif %}
+spec:
+  clusterIP: None
+  ports:
+    - port: {{ Values.ports.cluster }}
+      targetPort: cluster
+  selector:
+    app: "{{ self.rethinkdb__name() }}-cluster"
+    release: {{ Release.Name | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.rethinkdb__fullname() }}-proxy
+  labels:
+    app: {{ self.rethinkdb__name() }}-proxy
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  annotations:
+  {%- if Values.proxy.serviceAnnotations %}
+{{ toYaml(Values.proxy.serviceAnnotations) | indent(4) }}
+  {%- endif %}
+spec:
+  type: {{ Values.proxy.service.type }}
+  clusterIP: "{{ Values.proxy.service.clusterIP }}"
+{%- if Values.proxy.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.proxy.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.proxy.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.proxy.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.proxy.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.proxy.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - port: {{ Values.ports.driver }}
+      targetPort: driver
+  selector:
+    app: {{ self.rethinkdb__name() }}-proxy
+    release: {{ Release.Name }}
+#---apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: "{{ self.rethinkdb__fullname() }}-cluster"
+  labels:
+    app: "{{ self.rethinkdb__name() }}-cluster"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+spec:
+  serviceName: "{{ self.rethinkdb__fullname() }}-cluster"
+  replicas: {{ Values.cluster.replicas }}
+  template:
+    metadata:
+      name: "{{ self.rethinkdb__fullname() }}-cluster"
+      labels:
+        app: "{{ self.rethinkdb__name() }}-cluster"
+        heritage: {{ Release.Service | quote() }}
+        release: {{ Release.Name | quote() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+      annotations:
+      {%- if Values.cluster.podAnnotations %}
+{{ toYaml(Values.cluster.podAnnotations) | indent(8) }}
+      {%- endif %}
+    spec:
+      containers:
+        - name: {{ self.rethinkdb__name() }}-cluster
+          image: "{{ Values.image.name }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          ports:
+            - name: cluster
+              containerPort: {{ Values.ports.cluster }}
+          args:
+            - "--directory"
+            - "/data/db"
+            - "--bind"
+            - "all"
+            - "--no-http-admin"
+            - "--cache-size"
+            - {{ Values.cluster.rethinkCacheSize | quote() }}
+          volumeMounts:
+            - name: "datadir"
+              mountPath: "/data"
+          env:
+            - name: RETHINK_CLUSTER_SERVICE
+              value: "{{ self.rethinkdb__fullname() }}-cluster"
+            - name: RETHINKDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.rethinkdb__fullname() }}
+                  key: rethinkdb-password
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          livenessProbe:
+            exec:
+              command:
+                - /rethinkdb-probe
+            failureThreshold: 3
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - /rethinkdb-probe
+            failureThreshold: 3
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+{{ toYaml(Values.cluster.resources) | indent(12) }}
+{%- if Values.cluster.persistentVolume.enabled %}
+  volumeClaimTemplates:
+  - metadata:
+      name: datadir
+      annotations:
+      {%- if Values.cluster.storageClass.enabled %}
+        volume.beta.kubernetes.io/storage-class: {{ self.rethinkdb__fullname() }}
+      {%- endif %}
+      {%- for key, value in Values.cluster.persistentVolume.annotations.iteritems() %}
+        {{ key }}: {{ value }}
+      {%- endfor %}
+    spec:
+      accessModes:
+      {%- for item in Values.cluster.persistentVolume.accessModes %}
+        - {{ item | quote() }}
+      {%- endfor %}
+      resources:
+        requests:
+          storage: {{ Values.cluster.persistentVolume.size | quote() }}
+{%- else %}
+      volumes:
+        - name: datadir
+          emptyDir: {}
+{%- endif %}
+#---{%- if Values.cluster.storageClass.enabled %}
+apiVersion: {%- if  Capabilities.APIVersions.Has  "storage.k8s.io/v1" -%}
+  storage.k8s.io/v1
+{%- else -%}
+  storage.k8s.io/v1beta1
+{%- endif %}
+kind: StorageClass
+metadata:
+  labels:
+    app: "{{ self.rethinkdb__name() }}-cluster"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+  name: {{ self.rethinkdb__fullname() }}
+provisioner: {{ Values.cluster.storageClass.provisioner }}
+parameters:
+{%- for key, value in Values.cluster.storageClass.parameters.iteritems() %}
+  {{ key }}: {{ value }}
+{%- endfor %}
+{%- endif %}
+#---apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: "{{ self.rethinkdb__fullname() }}-proxy"
+  labels:
+    app: "{{ self.rethinkdb__name() }}-proxy"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+spec:
+  replicas: {{ Values.proxy.replicas }}
+  template:
+    metadata:
+      name: {{ self.rethinkdb__fullname() }}-proxy
+      labels:
+        app: {{ self.rethinkdb__name() }}-proxy
+        heritage: {{ Release.Service | quote() }}
+        release: {{ Release.Name | quote() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+      annotations:
+      {%- if Values.proxy.podAnnotations %}
+{{ toYaml(Values.proxy.podAnnotations) | indent(8) }}
+      {%- endif %}
+    spec:
+      containers:
+        - name: {{ self.rethinkdb__name() }}-proxy
+          image: "{{ Values.image.name }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          ports:
+            - name: cluster
+              containerPort: {{ Values.ports.cluster }}
+            - name: driver
+              containerPort: {{ Values.ports.driver }}
+            - name: admin
+              containerPort: {{ Values.ports.admin }}
+          args:
+            - "--bind"
+            - "all"
+            {%- if Values.proxy.driverTLS.enabled %}
+            - "--driver-tls-key"
+            - "/secrets/driver-key.pem"
+            - "--driver-tls-cert"
+            - "/secrets/driver-cert.pem"
+            {%- endif %}
+          volumeMounts:
+            - name: "secrets"
+              mountPath: "/secrets"
+          env:
+            - name: PROXY
+              value: "true"
+            - name: RETHINK_CLUSTER_SERVICE
+              value: "{{ self.rethinkdb__fullname() }}-cluster"
+            - name: RETHINKDB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.rethinkdb__fullname() }}
+                  key: rethinkdb-password
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.podIP
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+{{ toYaml(Values.proxy.resources) | indent(12) }}
+      volumes:
+        - name: secrets
+          projected:
+            sources:
+            - secret:
+                name: {{ self.rethinkdb__fullname() }}

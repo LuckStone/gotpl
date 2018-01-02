@@ -1,0 +1,141 @@
+
+
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-rocketchat
+  labels:
+    app: rocketchat
+    chart: "rocketchat-0.1.0"
+    release: "test"
+    heritage: "rocketchat"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-rocketchat
+  labels:
+    app: rocketchat
+    chart: "rocketchat-0.1.0"
+    release: "test"
+    heritage: "rocketchat"
+type: Opaque
+data:
+  mail-url: "c210cDovL05vbmU6Tm9uZUBOb25lOk5vbmU="
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-rocketchat
+  labels:
+    app: rocketchat
+    chart: "rocketchat-0.1.0"
+    release: "test"
+    heritage: "rocketchat"
+spec:
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http
+  selector:
+    app: rocketchat
+    release: "test"
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-rocketchat
+  labels:
+    app: rocketchat
+    chart: "rocketchat-0.1.0"
+    release: "test"
+    heritage: "rocketchat"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: rocketchat
+        release: "test"
+    spec:
+      containers:
+      - name: test-rocketchat
+        image: "rocket.chat:0.56"
+        imagePullPolicy: ""
+        env:
+        - name: DEPLOY_PLATFORM
+          value: helm-chart
+        - name: INSTANCE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: MONGO_URL
+          value: mongodb://test-mongodb:27017/rocketchat
+        - name: MAIL_URL
+          valueFrom:
+            secretKeyRef:
+              name: test-rocketchat
+              key: mail-url
+        - name: WebRTC_Enable_Channel
+          value: "False"
+        - name: Jitsi_Domain
+          value: "meet.jit.si"
+        - name: SMTP_Password
+          value: "None"
+        - name: Jitsi_Enable_Channels
+          value: "False"
+        - name: Jitsi_Chrome_Extension
+          value: "None"
+        - name: SMTP_Port
+          value: "None"
+        - name: SMTP_Host
+          value: "None"
+        - name: WebRTC_Enable_Private
+          value: "False"
+        - name: From_Email
+          value: "None"
+        - name: Jitsi_Enabled
+          value: "False"
+        - name: Jitsi_URL_Room_Prefix
+          value: "RocketChat"
+        - name: WebRTC_Enable_Direct
+          value: "False"
+        - name: Jitsi_Open_New_Window
+          value: "False"
+        - name: SMTP_Username
+          value: "None"
+        ports:
+        - name: http
+          containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 20
+          timeoutSeconds: 5
+        resources:
+          
+        volumeMounts:
+        - name: rocket-data
+          mountPath: /app/uploads
+      volumes:
+      - name: rocket-data
+        persistentVolumeClaim:
+          claimName: test-rocketchat

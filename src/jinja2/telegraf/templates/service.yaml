@@ -1,0 +1,42 @@
+{%- if Values.single.enabled -%}
+{%- if Values.single.service.enabled -%}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}-s
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  type: {{ Values.single.service.type }}
+  ports:
+  {%- for key, value in Values.single.config.inputs.iteritems() %}
+    {%- if key=="http_listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "http-listener"
+    {%- endif %}
+    {%- if key=="statsd" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "statsd"
+    {%- endif %}
+    {%- if key=="tcp-listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "tcp_listener"
+    {%- endif %}
+    {%- if key=="udp-listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "udp_listener"
+    {%- endif %}
+    {%- if key=="webhooks" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "webhooks"
+    {%- endif %}
+  {%- endfor %}
+  selector:
+    app: {{ self.fullname() }}-s
+{%- endif -%}
+{%- endif -%}

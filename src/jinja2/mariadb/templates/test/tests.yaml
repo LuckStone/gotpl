@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.mariadb__fullname() }}-tests
+data:
+  run.sh: |-
+    @test "Testing MariaDB is accessible" {
+      mysql -h {{ self.mariadb__fullname() }} {%- if Values.usePassword %} -p$MARIADB_ROOT_PASSWORD{%- endif %} -e 'show databases;'
+    }

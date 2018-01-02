@@ -1,0 +1,43 @@
+{%- if Values.setDefaultUser.enabled -%}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: {{ self.influxdb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  name: {{ self.influxdb__fullname() }}-set-auth
+  annotations:
+    "helm.sh/hook": post-install
+spec:
+  activeDeadlineSeconds: {{ Values.setDefaultUser.activeDeadlineSeconds | default(300, true) }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.influxdb__fullname() }}
+        release: "{{ Release.Name }}"
+    spec:
+      containers:
+      - name: {{ self.influxdb__fullname() }}-set-auth
+        image: "{{ Values.setDefaultUser.image }}"
+        env:
+          - name: INFLUXDB_USER
+            valueFrom:
+              secretKeyRef:
+                name: {{ self.influxdb__fullname() }}-auth
+                key: influxdb-user
+          - name: INFLUXDB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ self.influxdb__fullname() }}-auth
+                key: influxdb-password
+        args:
+          - "/bin/sh"
+          - "-c"
+          - |
+             curl -X POST http://{{ self.influxdb__fullname() }}:{{ Values.config.http.bind_address }}/query \
+             --data-urlencode \
+             "q=CREATE USER \"${INFLUXDB_USER}\" WITH PASSWORD '${INFLUXDB_PASSWORD}' {{ Values.setDefaultUser.user.privileges }}"
+      restartPolicy: {{ Values.setDefaultUser.restartPolicy }}
+{%- endif -%}

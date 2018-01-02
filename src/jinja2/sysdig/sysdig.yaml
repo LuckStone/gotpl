@@ -1,0 +1,23 @@
+
+
+
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-sysdig
+  labels:
+    app: test-sysdig
+    chart: "sysdig-0.3.0"
+    release: "test"
+    heritage: "sysdig"
+type: Opaque
+data:
+ access-key : "TUlTU0lORw=="
+ tags : ""
+
+
+---
+

@@ -1,0 +1,19 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  labels: {{ self.external-dns__labels()  | indent(4) }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+  name: {{ self.external-dns__fullname() }}
+rules:
+  - apiGroups:
+      - ""
+      - extensions
+    resources:
+      - ingresses
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+{%- endif -%}

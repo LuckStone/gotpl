@@ -1,0 +1,183 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels: {{ self.external-dns__labels()  | indent(4) }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+  name: {{ self.external-dns__fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.external-dns__fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.external-dns__fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  labels: {{ self.external-dns__labels()  | indent(4) }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+  name: {{ self.external-dns__fullname() }}
+rules:
+  - apiGroups:
+      - ""
+      - extensions
+    resources:
+      - ingresses
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+{%- endif -%}
+#---{%- if (Values.aws.secret_key and Values.aws.access_key) or Values.cloudflare.api_key -%}
+apiVersion: v1
+kind: Secret
+metadata:
+  labels: {{ self.external-dns__labels()  | indent(4) }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+  name: {{ self.external-dns__fullname() }}
+type: Opaque
+data:
+{%- if Values.aws.secret_key and Values.aws.access_key %}
+  aws_access_key_id: {{ Values.aws.access_key | b64enc() | quote() }}
+  aws_secret_access_key: {{ Values.aws.secret_key | b64enc() | quote() }}
+{%- endif %}
+{%- if Values.cloudflare.api_key %}
+  cloudflare_api_key: {{ Values.cloudflare.api_key | b64enc() | quote() }}
+{%- endif %}
+{%- endif %}
+#---{%- if Values.rbac.create -%}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels: {{ self.external-dns__labels()  | indent(4) }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+  name: {{ self.external-dns__fullname() }}
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.service.annotations %}
+  annotations:
+{{ toYaml(Values.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.external-dns__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.external-dns__fullname() }}
+spec:
+  clusterIP: "{{ Values.service.clusterIP }}"
+{%- if Values.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - port: {{ Values.service.servicePort }}
+      protocol: TCP
+      targetPort: 7979
+  selector:
+    app: {{ self.external-dns__name() }}
+    release: {{ Release.Name }}
+  type: "{{ Values.service.type }}"
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels: {{ self.external-dns__labels()  | indent(4) }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+  name: {{ self.external-dns__fullname() }}
+spec:
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels: {{ self.external-dns__labels()  | indent(8) }}
+    spec:
+      containers:
+        - name: {{ self.external-dns__name() }}
+          image: "{{ Values.image.name }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          args:
+          {%- if Values.logLevel %}
+            - --log-level={{ Values.logLevel }}
+          {%- endif %}
+          {%- if Values.publishInternalServices %}
+            - --publish-internal-services
+          {%- endif %}
+          {%- for item in Values.domainFilters %}
+            - --domain-filter={{ item }}
+          {%- endfor %}
+            - --policy={{ Values.policy }}
+            - --provider={{ Values.provider }}
+          {%- for item in Values.sources %}
+            - --source={{ item }}
+          {%- endfor %}
+          {%- for key, value in Values.extraArgs.iteritems() %}
+            {%- if value %}
+            - --{{ key }}={{ value }}
+            {%- else %}
+            - --{{ key }}
+            {%- endif %}
+          {%- endfor %}
+          {%- if Values.aws.zone_type %}
+            - --zone-type={{ Values.aws.zone_type }}
+          {%- endif %}
+          env:
+        {%- if Values.aws.secret_key and Values.aws.access_key %}
+          - name: AWS_ACCESS_KEY_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ self.external-dns__fullname() }}
+                key: aws_access_key_id
+          - name: AWS_SECRET_ACCESS_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ self.external-dns__fullname() }}
+                key: aws_secret_access_key
+        {%- endif %}
+        {%- if Values.aws.region %}
+          - name: AWS_DEFAULT_REGION
+            value: {{ Values.aws.region }}
+        {%- endif %}
+        {%- if Values.cloudflare.api_key and Values.cloudflare.email %}
+          - name: CF_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ self.external-dns__fullname() }}
+                key: cloudflare_api_key
+          - name: CF_API_EMAIL
+            value: "{{ Values.cloudflare.email }}"
+        {%- endif %}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 7979
+          ports:
+            - containerPort: 7979
+        {%- if Values.resources %}
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+        {%- endif %}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.tolerations %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+    {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.external-dns__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}

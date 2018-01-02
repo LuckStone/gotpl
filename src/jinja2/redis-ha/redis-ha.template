@@ -1,0 +1,171 @@
+{%- if Values.persistentVolume.enabled %}
+{%- if  not  Values.persistentVolume.existingClaim -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}-pvc
+  labels:
+{{ self.labels__standard()  | indent(4) }}
+  annotations:
+  {%- if Values.persistentVolume.storageClass %}
+    volume.beta.kubernetes.io/storage-class: "{{ Values.persistentVolume.storageClass }}"
+  {%- else %}
+    volume.alpha.kubernetes.io/storage-class: default
+  {%- endif %}
+  {%- if Values.persistentVolume.annotations %}
+{{ toYaml(Values.persistentVolume.annotations) | indent(4) }}
+  {%- endif %}
+spec:
+  accessModes:
+{{ toYaml(Values.persistentVolume.accessModes) | indent(4) }}
+  resources:
+    requests:
+      storage: {{ Values.persistentVolume.size | quote() }}
+{%- endif %}
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: {{ self.name() }}-sentinel-svc
+    role: service
+{{ self.labels__standard()  | indent(4) }}
+  name: redis-sentinel
+spec:
+  ports:
+    - port: 26379
+      targetPort: 26379
+  selector:
+    redis-sentinel: "true"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+#---apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    name: {{ self.name() }}
+    role: service
+{{ self.labels__standard()  | indent(4) }}
+  name: {{ self.fullname() }}
+spec:
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    redis-node: "true"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+#---apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  labels:
+    name: {{ self.name() }}-master
+    redis-sentinel: "true"
+    redis-node: "true"
+    role: master
+{{ self.labels__standard()  | indent(4) }}
+  name: {{ self.fullname() }}-master
+spec:
+  serviceName: "redis"
+  replicas: {{ Values.replicas.master }}
+  template:
+    metadata:
+      labels:
+        app: redis
+        redis-sentinel: "true"
+        redis-node: "true"
+        role: master
+{{ self.labels__standard()  | indent(8) }}
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: master
+          image: {{ Values.redis_image }}
+          resources:
+{{ toYaml(Values.resources.master) | indent(12) }}
+          env:
+            - name: MASTER
+              value: "true"
+          ports:
+            - containerPort: 6379
+
+          volumeMounts:
+            - mountPath: /redis-master-data
+              name: data
+        - name: sentinel
+          image: {{ Values.redis_image }}
+          resources:
+{{ toYaml(Values.resources.sentinel) | indent(12) }}
+          env:
+            - name: SENTINEL
+              value: "true"
+          ports:
+            - containerPort: 26379
+      volumes:
+      - name: data
+      {%- if Values.persistentVolume.enabled %}
+        persistentVolumeClaim:
+          claimName: {%- if Values.persistentVolume.existingClaim %}{{ Values.persistentVolume.existingClaim }}{%- else %}{{ self.name() }}{%- endif %}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    redis-node: "true"
+{{ self.labels__standard()  | indent(4) }}
+spec:
+  replicas: {{ Values.replicas.slave }}
+  template:
+    metadata:
+      labels:
+        name: redis
+        role: replica
+{{ self.labels__standard()  | indent(8) }}
+    spec:
+      containers:
+      - name: redis
+        image: "{{ Values.redis_image }}"
+        resources:
+{{ toYaml(Values.resources.slave) | indent(10) }}
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - mountPath: /redis-master-data
+          name: data
+      volumes:
+      - name: data
+      {%- if Values.persistentVolume.enabled %}
+        persistentVolumeClaim:
+          claimName: {%- if Values.persistentVolume.existingClaim %}{{ Values.persistentVolume.existingClaim }}{%- else %}{{ self.fullname() }}{%- endif %}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}-sentinel
+spec:
+  replicas: {{ Values.replicas.sentinel }}
+  template:
+    metadata:
+      labels:
+        name: redis-sentinel
+        redis-sentinel: "true"
+        role: sentinel
+{{ self.labels__standard()  | indent(8) }}
+    spec:
+      containers:
+      - name: sentinel
+        image: {{ Values.redis_image }}
+        resources:
+{{ toYaml(Values.resources.master) | indent(10) }}
+        env:
+          - name: SENTINEL
+            value: "true"
+        ports:
+          - containerPort: 26379

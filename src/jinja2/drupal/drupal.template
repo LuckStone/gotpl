@@ -1,0 +1,209 @@
+{%- if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.drupal__fullname() }}
+  labels:
+    app: {{ self.drupal__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+    {%- for key, value in Values.ingress.annotations.iteritems() %}
+      {{ key }}: {{ value | quote() }}
+    {%- endfor %}
+spec:
+  rules:
+    - host: {{ Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ self.drupal__fullname() }}
+              servicePort: 80
+{%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+{%- endif -%}
+{%- endif -%}
+#---{%- if Values.persistence.enabled and Values.volumeMounts.apache.mountPath -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.drupal__fullname() }}-apache
+  labels:
+    app: {{ self.drupal__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.apache.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.apache.size | quote() }}
+{%- if Values.persistence.apache.storageClass %}
+{%- if ("-"==Values.persistence.apache.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.apache.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---{%- if Values.persistence.enabled and ( not  Values.persistence.drupal.existingClaim) -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.drupal__fullname() }}-drupal
+  labels:
+    app: {{ self.drupal__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  {%- if Values.persistence.drupal.hostPath %}
+  storageClassName: ""
+  {%- endif %}
+  accessModes:
+    - {{ Values.persistence.drupal.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.drupal.size | quote() }}
+{%- if Values.persistence.drupal.storageClass and ( not  Values.persistence.drupal.hostPath) -%}
+{%- if ("-"==Values.persistence.drupal.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.drupal.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---{%- if Values.persistence.enabled and Values.persistence.drupal.hostPath and ( not  Values.persistence.drupal.existingClaim) -%}
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ self.drupal__fullname() }}-drupal
+spec:
+  accessModes:
+    - {{ Values.persistence.drupal.accessMode | quote() }}
+  capacity:
+    storage: {{ Values.persistence.drupal.size | quote() }}
+  hostPath:
+    path: {{ Values.persistence.drupal.hostPath | quote() }}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.drupal__fullname() }}
+  labels:
+    app: {{ self.drupal__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.drupalPassword %}
+  drupal-password: {{ Values.drupalPassword | default("", true) | b64enc() | quote() }}
+  {%- else %}
+  drupal-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.drupal__fullname() }}
+  labels:
+    app: {{ self.drupal__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: {{ self.drupal__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.drupal__fullname() }}
+  labels:
+    app: {{ self.drupal__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.drupal__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.drupal__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.drupal__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.drupal__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: DRUPAL_USERNAME
+          value: {{ Values.drupalUsername | default("", true) | quote() }}
+        - name: DRUPAL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.drupal__fullname() }}
+              key: drupal-password
+        - name: DRUPAL_EMAIL
+          value: {{ Values.drupalEmail | default("", true) | quote() }}
+{%- if Values.extraVars %}
+{{ toYaml(Values.extraVars) | indent(8) }}
+{%- endif %}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+{{ toYaml(Values.livenessProbe) | indent(10) }}
+        readinessProbe:
+{{ toYaml(Values.readinessProbe) | indent(10) }}
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: drupal-data
+          mountPath: {{ Values.volumeMounts.drupal.mountPath }}
+        {%- if Values.volumeMounts.apache.mountPath %}
+        - name: apache-data
+          mountPath: {{ Values.volumeMounts.apache.mountPath }}
+        {%- endif %}
+      {%- if Values.imagePullSecrets %}
+      imagePullSecrets:
+{{ toYaml(Values.imagePullSecrets) | indent(8) }}
+      {%- endif %}
+      volumes:
+      - name: drupal-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.persistence.drupal.existingClaim | default ("%s-drupal" | format((self.drupal__fullname() )) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      {%- if Values.volumeMounts.apache.mountPath %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.drupal__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      {%- endif %}

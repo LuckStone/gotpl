@@ -1,0 +1,372 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+data:
+  traefik.toml: |
+    # traefik.toml
+    logLevel = "INFO"
+    {%- if Values.debug.enabled %}
+    debug = true
+    {%- endif %}
+    {%- if Values.ssl.enabled %}
+    defaultEntryPoints = ["http","https"]
+    {%- else %}
+    defaultEntryPoints = ["http"]
+    {%- endif %}
+    [entryPoints]
+      [entryPoints.http]
+      address = ":80"
+      compress = {{ Values.gzip.enabled }}
+        {%- if Values.ssl.enabled and Values.ssl.enforced %}
+        [entryPoints.http.redirect]
+          entryPoint = "https"
+        {%- endif %}
+      {%- if Values.ssl.enabled %}
+      [entryPoints.https]
+      address = ":443"
+      compress = {{ Values.gzip.enabled }}
+        [entryPoints.https.tls]
+          [[entryPoints.https.tls.certificates]]
+          CertFile = "/ssl/tls.crt"
+          KeyFile = "/ssl/tls.key"
+      {%- endif %}
+    [kubernetes]
+    {%- if Values.kubernetes %}
+      {%- if Values.kubernetes.namespaces %}
+    namespaces = [
+        {%- for idx, element in Values.kubernetes.namespaces.iteritems() %}
+            {%- if idx %}, {%- endif %}
+            {{ element | quote() }}
+        {%- endfor -%}
+        ]
+      {%- endif %}
+      {%- if Values.kubernetes.labelSelector %}
+    labelselector = {{ Values.kubernetes.labelSelector | quote() }}
+      {%- endif %}
+    {%- endif %}
+    {%- if Values.accessLogs.enabled %}
+    [accessLogs]
+    {%- if Values.accessLogs.filePath %}
+    filePath = "{{ Values.accessLogs.filePath }}"
+    {%- endif %}
+    format = "{{ Values.accessLogs.format }}"
+    {%- endif %}
+    {%- if Values.acme.enabled %}
+    [acme]
+    email = "{{ Values.acme.email }}"
+    storage = "/acme/acme.json"
+    entryPoint = "https"
+    onHostRule = true
+    {%- if Values.acme.staging %}
+    caServer = "https://acme-staging.api.letsencrypt.org/directory"
+    {%- endif %}
+    {%- endif %}
+    {%- if Values.dashboard.enabled %}
+    [web]
+    address = ":8080"
+      {%- if Values.dashboard.auth %}
+      {%- if Values.dashboard.auth.basic %}
+      [web.auth.basic]
+        users = [{%- for key, value in Values.dashboard.auth.basic.iteritems() %}"{{ key }}:{{ value }}",{%- endfor %}]
+      {%- endif %}
+      {%- endif %}
+      {%- if Values.dashboard.statistics %}
+      {%- if Values.dashboard.statistics.recentErrors %}
+      [web.statistics]
+        RecentErrors = {{ Values.dashboard.statistics.recentErrors }}
+      {%- endif %}
+      {%- endif %}
+    {%- endif %}
+    {%- if Values.metrics.prometheus.enabled %}
+    [web.metrics.prometheus]
+      Buckets = {{ Values.metrics.prometheus.buckets }}
+    {%- endif %}
+    {%- if Values.metrics.datadog.enabled %}
+    [web.metrics.datadog]
+      Address = {{ Values.metrics.datadog.address }}
+      PushInterval = "{{ Values.metrics.datadog.pushInterval }}"
+    {%- endif %}
+    {%- if Values.metrics.statsd.enabled %}
+    [web.metrics.statsd]
+      Address = {{ Values.metrics.statsd.address }}
+      PushInterval = "{{ Values.metrics.statsd.pushInterval }}"
+    {%- endif %}
+#---{%- if Values.dashboard.enabled %}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.fullname() }}-dashboard
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+  {%- if Values.dashboard.ingress %}
+  {%- for key, value in Values.dashboard.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  {%- endif %}
+spec:
+  rules:
+  - host: {{ Values.dashboard.domain }}
+    http:
+      paths:
+      - backend:
+          serviceName: {{ self.fullname() }}-dashboard
+          servicePort: 80
+{%- endif %}
+#---{%- if Values.acme.enabled and Values.acme.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}-acme
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.acme.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.acme.persistence.size | quote() }}
+{%- if Values.acme.persistence.storageClass %}
+{%- if ("-"==Values.acme.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.acme.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---{%- if Values.ssl.enabled %}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.fullname() }}-default-cert
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  tls.crt: {{ Values.ssl.defaultCert }}
+  tls.key: {{ Values.ssl.defaultKey }}
+{%- endif %}
+#---{%- if Values.rbac.enabled %}
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: {{ self.fullname() }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - extensions
+    resources:
+      - ingresses
+    verbs:
+      - get
+      - list
+      - watch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: {{ self.fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.fullname() }}
+subjects:
+- kind: ServiceAccount
+  name: {{ self.fullname() }}
+  namespace: {{ Release.Namespace }}
+{%- endif %}
+#---{%- if Values.dashboard.enabled %}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}-dashboard
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  selector:
+    app: {{ self.fullname() }}
+  ports:
+  - port: 80
+    targetPort: 8080
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  {%- if Values.service %}
+  {%- for key, value in Values.service.labels.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  {%- endif %}
+  annotations:
+  {%- if Values.service %}
+  {%- for key, value in Values.service.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  {%- endif %}
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.loadBalancerIP %}
+  loadBalancerIP: {{ Values.loadBalancerIP }}
+  {%- endif %}
+  {%- if Values.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+    {%- for cidr in Values.loadBalancerSourceRanges %}
+    - {{ cidr }}
+    {%- endfor %}
+  {%- endif %}
+  selector:
+    app: {{ self.fullname() }}
+  ports:
+  - port: 80
+    name: http
+  - port: 443
+    name: https
+    {%- if  not  Values.ssl.enabled %}
+    targetPort: 80
+    {%- endif %}
+  {%- if Values.metrics.prometheus.enabled or Values.metrics.datadog.enabled or Values.metrics.statsd.enabled %}
+  - port: 8080
+    name: metrics
+  {%- endif %}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: {{ Values.replicas | default(1, true) }}
+  selector:
+    matchLabels:
+      app: {{ self.fullname() }}
+  template:
+    metadata:
+      {%- if (Values.tolerations) and (Capabilities.KubeVersion.Minor<="5") %}
+      annotations:
+        scheduler.alpha.kubernetes.io/tolerations: '{{ toJson(Values.tolerations) }}'
+      {%- endif %}
+      labels:
+        app: {{ self.fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+    spec:
+      {%- if Values.rbac.enabled %}
+      serviceAccountName: {{ self.fullname() }}
+      {%- else %}
+      serviceAccountName: default
+      {%- endif %}
+      terminationGracePeriodSeconds: 60
+      {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {%- endif %}
+      containers:
+      - image: {{ Values.image }}:{{ Values.imageTag }}
+        name: {{ self.fullname() }}
+        resources:
+          requests:
+            cpu: "{{ Values.cpuRequest }}"
+            memory: "{{ Values.memoryRequest }}"
+          limits:
+            cpu: "{{ Values.cpuLimit }}"
+            memory: "{{ Values.memoryLimit }}"
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          failureThreshold: 1
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 2
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          failureThreshold: 3
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 2
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        {%- if Values.ssl.enabled %}
+        - mountPath: /ssl
+          name: ssl
+        {%- endif %}
+        {%- if Values.acme.enabled %}
+        - mountPath: /acme
+          name: acme
+        {%- endif %}
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        {%- if Values.dashboard.enabled %}
+        - containerPort: 8080
+        {%- endif %}
+        args:
+        - --configfile=/config/traefik.toml
+      volumes:
+      - name: config
+        configMap:
+          name: {{ self.fullname() }}
+      {%- if Values.ssl.enabled %}
+      - name: ssl
+        secret:
+          secretName: {{ self.fullname() }}-default-cert
+      {%- endif %}
+      {%- if Values.acme.enabled %}
+      - name: acme
+      {%- if Values.acme.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-acme
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      {%- endif %}
+      {%- if (Values.tolerations) and (Capabilities.KubeVersion.Minor>="6") %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(6) }}
+      {%- endif %}

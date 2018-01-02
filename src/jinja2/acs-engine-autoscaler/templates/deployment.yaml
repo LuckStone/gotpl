@@ -1,0 +1,83 @@
+{%- if Values.acsenginecluster.resourcegroup and Values.acsenginecluster.azurespappid and Values.acsenginecluster.azurespsecret and Values.acsenginecluster.azuresptenantid and Values.acsenginecluster.kubeconfigprivatekey and Values.acsenginecluster.clientprivatekey -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.acs-engine-autoscaler__fullname() }}
+  labels:
+{{ self.acs-engine-autoscaler__labels__standard()  | indent(4) }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+{{ self.acs-engine-autoscaler__labels__standard()  | indent(8) }}
+        openai/do-not-drain: "true"
+    spec:
+      containers:
+      - name: {{ self.acs-engine-autoscaler__fullname() }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        env:
+        - name: AZURE_SP_APP_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.acs-engine-autoscaler__fullname() }}
+              key: azure-sp-app-id
+        - name: AZURE_SP_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.acs-engine-autoscaler__fullname() }}
+              key: azure-sp-secret
+        - name: AZURE_SP_TENANT_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.acs-engine-autoscaler__fullname() }}
+              key: azure-sp-tenant-id
+        - name: KUBECONFIG_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.acs-engine-autoscaler__fullname() }}
+              key: kubeconfig-private-key
+        - name: CLIENT_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.acs-engine-autoscaler__fullname() }}
+              key: client-private-key
+        - name: CA_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.acs-engine-autoscaler__fullname() }}
+              key: ca-private-key
+        command:
+            - python
+            - main.py
+            - --resource-group
+            - {{ Values.acsenginecluster.resourcegroup }}
+            {%- if Values.acsenginecluster.acsdeployment %}
+            - --acs-deployment
+            - {{ Values.acsenginecluster.acsdeployment }}
+            {%- endif %}
+            {%- if Values.acsenginecluster.sleeptime %}
+            - --sleep
+            - {{ Values.acsenginecluster.sleeptime | quote() }}
+            {%- endif %}
+            {%- if Values.acsenginecluster.ignorepools %}
+            - --ignore-pools 
+            - {{ Values.acsenginecluster.ignorepools }}
+            {%- endif %}
+            {%- if Values.acsenginecluster.spareagents %}
+            - --spare-agents 
+            - {{ Values.acsenginecluster.spareagents | quote() }}
+            {%- endif %}
+            {%- if Values.acsenginecluster.idlethreshold %}
+            - --idle-threshold 
+            - {{ Values.acsenginecluster.idlethreshold | quote() }}
+            {%- endif %}
+            {%- if Values.acsenginecluster.overprovision %}
+            - --over-provision 
+            - {{ Values.acsenginecluster.overprovision | quote() }}
+            {%- endif %}
+            - -vvv
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+      restartPolicy: Always
+      dnsPolicy: Default
+{%- endif %}

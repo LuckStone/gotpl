@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.kubernetes-dashboard__fullname() }}
+  labels:
+    app: {{ self.kubernetes-dashboard__name() }}
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    kubernetes.io/cluster-service: "true"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - port: {{ Values.httpPort }}
+    targetPort: http
+{%- if .Values hasKey "nodePort" %}
+    nodePort: {{ Values.nodePort }}
+{%- endif %}
+  selector:
+    app: {{ self.kubernetes-dashboard__name() }}
+    release: {{ Release.Name | quote() }}

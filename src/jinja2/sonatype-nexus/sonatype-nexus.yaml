@@ -1,0 +1,97 @@
+
+
+
+---
+
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-sonatype-nexus
+  labels:
+    app: test-sonatype-nexus
+    chart: "sonatype-nexus-0.1.0"
+    release: "test"
+    heritage: "sonatype-nexus"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-sonatype-nexus
+  labels:
+    app: sonatype-nexus
+    chart: sonatype-nexus-0.1.0
+    release: test
+    heritage: sonatype-nexus
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8081
+      targetPort: 8081
+      protocol: TCP
+      name: nexus
+  selector:
+    app: sonatype-nexus
+    release: test
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-sonatype-nexus
+  labels:
+    app: sonatype-nexus
+    chart: sonatype-nexus-0.1.0
+    release: test
+    heritage: sonatype-nexus
+spec:
+  selector:
+    matchLabels:
+      app: sonatype-nexus
+      release: test
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: sonatype-nexus
+        chart: sonatype-nexus-0.1.0
+        release: test
+        heritage: sonatype-nexus
+    spec:
+      containers:
+        - name: sonatype-nexus
+          image: "clearent/nexus:3.5.1-02"
+          imagePullPolicy: 
+          ports:
+            - containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            failureThreshold: 6
+          volumeMounts:
+            - mountPath: /nexus-data
+              name: nexus-data-volume
+      volumes:
+      - name: nexus-data-volume
+        persistentVolumeClaim:
+          claimName: test-sonatype-nexus

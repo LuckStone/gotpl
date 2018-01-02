@@ -1,0 +1,295 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.mongodb-replicaset__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mongodb-replicaset__fullname() }}
+data:
+  mongod.conf: |
+{{ toYaml(Values.configmap) | indent(4) }}
+#---{%- if (Values.auth.enabled) and ( not  Values.auth.existingAdminSecret) -%}
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app: {{ self.mongodb-replicaset__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mongodb-replicaset__adminSecret() }}
+type: Opaque
+data:
+  user: {{ Values.auth.adminUser | b64enc() }}
+  password: {{ Values.auth.adminPassword | b64enc() }}
+{%- endif -%}
+#---{%- if  and  (Values.tls.enabled) -%}
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}-ca
+data:
+  tls.key: {{ Values.tls.cakey }}
+  tls.crt: {{ Values.tls.cacert }}
+{%- endif -%}
+#---{%- if (Values.auth.enabled) and ( not  Values.auth.existingKeySecret) -%}
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app: {{ self.mongodb-replicaset__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mongodb-replicaset__keySecret() }}
+type: Opaque
+data:
+  key.txt: {{ Values.auth.key | b64enc() }}
+{%- endif -%}
+
+#---# A headless service to create DNS records
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  {%- if Values.serviceAnnotations %}
+{{ toYaml(Values.serviceAnnotations) | indent(4) }}
+  {%- endif %}
+  labels:
+    app: {{ self.mongodb-replicaset__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mongodb-replicaset__fullname() }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: peer
+      port: {{ Values.port }}
+  selector:
+    app: {{ self.mongodb-replicaset__name() }}
+    release: {{ Release.Name }}
+#---apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  labels:
+    app: {{ self.mongodb-replicaset__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mongodb-replicaset__fullname() }}
+spec:
+  serviceName: {{ self.mongodb-replicaset__fullname() }}
+  replicas: {{ Values.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.mongodb-replicaset__name() }}
+        release: {{ Release.Name }}
+      annotations:
+      {%- if Values.podAnnotations %}
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+      {%- endif %}
+    spec:
+      initContainers:
+        - name: install
+          image: "{{ Values.installImage.name }}:{{ Values.installImage.tag }}"
+          args:
+            - --work-dir=/work-dir
+          imagePullPolicy: "{{ Values.installImage.pullPolicy }}"
+          volumeMounts:
+            - name: workdir
+              mountPath: /work-dir
+            - name: config
+              mountPath: /config
+        - name: bootstrap
+          image: "{{ Values.image.name }}:{{ Values.image.tag }}"
+          command:
+            - /work-dir/peer-finder
+          args:
+            - -on-start=/work-dir/on-start.sh
+            - "-service={{ self.mongodb-replicaset__fullname() }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+            - name: REPLICA_SET
+              value: {{ Values.replicaSet }}
+          {%- if Values.auth.enabled %}
+            - name: AUTH
+              value: "true"
+            - name: ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ self.mongodb-replicaset__adminSecret() }}"
+                  key: user
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ self.mongodb-replicaset__adminSecret() }}"
+                  key: password
+          {%- endif %}
+          volumeMounts:
+            - name: workdir
+              mountPath: /work-dir
+            - name: config
+              mountPath: /config
+          {%- if  and  (Values.tls.enabled) %}
+            - name: ca
+              mountPath: /ca
+          {%- endif %}
+            - name: datadir
+              mountPath: /data/db
+          {%- if Values.auth.enabled %}
+            - name: keydir
+              mountPath: /keydir
+              readOnly: true
+          {%- endif %}
+      containers:
+        - name: {{ self.mongodb-replicaset__name() }}
+          image: "{{ Values.image.name }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          ports:
+            - name: peer
+              containerPort: {{ Values.port }}
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+          command:
+            - mongod
+            - --config=/config/mongod.conf
+          {%- if Values.auth.enabled %}
+          env:
+            - name: AUTH
+              value: "true"
+            - name: ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ self.mongodb-replicaset__adminSecret() }}"
+                  key: user
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ self.mongodb-replicaset__adminSecret() }}"
+                  key: password
+          {%- endif %}
+          livenessProbe:
+            exec:
+              command:
+                - mongo
+              {%- if  and  (Values.tls.enabled) %}
+                - --ssl
+                - --sslCAFile=/ca/tls.crt
+                - --sslPEMKeyFile=/work-dir/mongo.pem
+              {%- endif %}
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command:
+                - mongo
+              {%- if  and  (Values.tls.enabled) %}
+                - --ssl
+                - --sslCAFile=/ca/tls.crt
+                - --sslPEMKeyFile=/work-dir/mongo.pem
+              {%- endif %}
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+          volumeMounts:
+            - name: datadir
+              mountPath: /data/db
+            - name: config
+              mountPath: /config
+          {%- if  and  (Values.tls.enabled) %}
+            - name: ca
+              mountPath: /ca
+          {%- endif %}
+            - name: workdir
+              mountPath: /work-dir
+          {%- if Values.auth.enabled %}
+            - name: keydir
+              mountPath: /keydir
+              readOnly: true
+          {%- endif %}
+      {%- if Values.podAntiAffinity=="hard" %}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: "{{ self.mongodb-replicaset__name() }}"
+                  release: "{{ Release.Name }}"
+      {%- elif Values.podAntiAffinity=="soft" %}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: "{{ self.mongodb-replicaset__name() }}"
+                    release: "{{ Release.Name }}"
+      {%- endif %}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ self.mongodb-replicaset__fullname() }}
+        {%- if  and  (Values.tls.enabled) %}
+        - name: ca
+          secret:
+            defaultMode: 0400
+            secretName: {{ self.fullname() }}-ca
+        {%- endif %}
+        {%- if Values.auth.enabled %}
+        - name: keydir
+          secret:
+            defaultMode: 0400
+            secretName: {{ self.mongodb-replicaset__keySecret() }}
+        {%- endif %}
+        - name: workdir
+          emptyDir: {}
+{%- if Values.persistentVolume.enabled %}
+  volumeClaimTemplates:
+    - metadata:
+        name: datadir
+        annotations:
+        {%- for key, value in Values.persistentVolume.annotations.iteritems() %}
+          {{ key }}: {{ value }}
+        {%- endfor %}
+      spec:
+        accessModes:
+        {%- for item in Values.persistentVolume.accessModes %}
+          - {{ item | quote() }}
+        {%- endfor %}
+        resources:
+          requests:
+            storage: {{ Values.persistentVolume.size | quote() }}
+      {%- if Values.persistentVolume.storageClass %}
+      {%- if ("-"==Values.persistentVolume.storageClass) %}
+        storageClassName: ""
+      {%- else %}
+        storageClassName: "{{ Values.persistentVolume.storageClass }}"
+      {%- endif %}
+      {%- endif %}
+{%- else %}
+        - name: datadir
+          emptyDir: {}
+{%- endif %}

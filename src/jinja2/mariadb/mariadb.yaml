@@ -1,0 +1,183 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-mariadb
+  labels:
+    app: test-mariadb
+    chart: "mariadb-2.0.0"
+    release: "test"
+    heritage: "mariadb"
+data:
+  my.cnf: |-
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-mariadb-tests
+data:
+  run.sh: |-
+    @test "Testing MariaDB is accessible" {
+      mysql -h test-mariadb -p$MARIADB_ROOT_PASSWORD -e 'show databases;'
+    }
+
+
+---
+
+
+
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-mariadb
+  labels:
+    app: test-mariadb
+    chart: "mariadb-2.0.0"
+    release: "test"
+    heritage: "mariadb"
+type: Opaque
+data:
+  mariadb-root-password: "MTIzNDU2"
+  mariadb-password: "MTIzNDU2"
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-mariadb
+  labels:
+    app: test-mariadb
+    chart: "mariadb-2.0.0"
+    release: "test"
+    heritage: "mariadb"
+spec:
+  type: ClusterIP
+  ports:
+  - name: mysql
+    port: 3306
+    targetPort: mysql
+  selector:
+    app: test-mariadb
+
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "test-mariadb-test-kriik"
+  annotations:
+    "helm.sh/hook": test-success
+spec:
+  initContainers:
+    - name: "test-framework"
+      image: "dduportal/bats:0.4.0"
+      command:
+        - "bash"
+        - "-c"
+        - |
+          set -ex
+          # copy bats to tools dir
+          cp -R /usr/local/libexec/ /tools/bats/
+      volumeMounts:
+      - mountPath: /tools
+        name: tools
+  containers:
+    - name: mariadb-test
+      image: 192.168.18.250:5002/library/mariadb:10.1.28-r1
+      command: ["/tools/bats/bats", "-t", "/tests/run.sh"]
+      env:
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+      volumeMounts:
+      - mountPath: /tests
+        name: tests
+        readOnly: true
+      - mountPath: /tools
+        name: tools
+  volumes:
+  - name: tests
+    configMap:
+      name: test-mariadb-tests
+  - name: tools
+    emptyDir: {}
+  restartPolicy: Never
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-mariadb
+  labels:
+    app: test-mariadb
+    chart: "mariadb-2.0.0"
+    release: "test"
+    heritage: "mariadb"
+spec:
+  template:
+    metadata:
+      labels:
+        app: test-mariadb
+    spec:
+      containers:
+      - name: mariadb
+        image: "192.168.18.250:5002/library/mariadb:10.1.28-r1"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-password
+        - name: MARIADB_USER
+          value: "bn_wordpress"
+        - name: MARIADB_DATABASE
+          value: "bitnami_wordpress"
+        ports:
+        - name: mysql
+          containerPort: 3306
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        resources:
+          limits: {cpu: 1000m, memory: 1024Mi}
+          requests: {cpu: 250m, memory: 256Mi}
+        volumeMounts:
+        - name: config
+          mountPath: /bitnami/mariadb/conf/my_custom.cnf
+          subPath: my.cnf
+        - name: data
+          mountPath: /bitnami/mariadb
+      volumes:
+      - name: config
+        configMap:
+          name: test-mariadb
+      - name: data
+        emptyDir: {}

@@ -1,0 +1,103 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: {{ Values.replicas | default(1, true) }}
+  selector:
+    matchLabels:
+      app: {{ self.fullname() }}
+  template:
+    metadata:
+      {%- if (Values.tolerations) and (Capabilities.KubeVersion.Minor<="5") %}
+      annotations:
+        scheduler.alpha.kubernetes.io/tolerations: '{{ toJson(Values.tolerations) }}'
+      {%- endif %}
+      labels:
+        app: {{ self.fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+    spec:
+      {%- if Values.rbac.enabled %}
+      serviceAccountName: {{ self.fullname() }}
+      {%- else %}
+      serviceAccountName: default
+      {%- endif %}
+      terminationGracePeriodSeconds: 60
+      {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {%- endif %}
+      containers:
+      - image: {{ Values.image }}:{{ Values.imageTag }}
+        name: {{ self.fullname() }}
+        resources:
+          requests:
+            cpu: "{{ Values.cpuRequest }}"
+            memory: "{{ Values.memoryRequest }}"
+          limits:
+            cpu: "{{ Values.cpuLimit }}"
+            memory: "{{ Values.memoryLimit }}"
+        readinessProbe:
+          tcpSocket:
+            port: 80
+          failureThreshold: 1
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 2
+        livenessProbe:
+          tcpSocket:
+            port: 80
+          failureThreshold: 3
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 2
+        volumeMounts:
+        - mountPath: /config
+          name: config
+        {%- if Values.ssl.enabled %}
+        - mountPath: /ssl
+          name: ssl
+        {%- endif %}
+        {%- if Values.acme.enabled %}
+        - mountPath: /acme
+          name: acme
+        {%- endif %}
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        {%- if Values.dashboard.enabled %}
+        - containerPort: 8080
+        {%- endif %}
+        args:
+        - --configfile=/config/traefik.toml
+      volumes:
+      - name: config
+        configMap:
+          name: {{ self.fullname() }}
+      {%- if Values.ssl.enabled %}
+      - name: ssl
+        secret:
+          secretName: {{ self.fullname() }}-default-cert
+      {%- endif %}
+      {%- if Values.acme.enabled %}
+      - name: acme
+      {%- if Values.acme.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-acme
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      {%- endif %}
+      {%- if (Values.tolerations) and (Capabilities.KubeVersion.Minor>="6") %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(6) }}
+      {%- endif %}

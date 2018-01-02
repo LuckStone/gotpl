@@ -1,0 +1,91 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.redmine__fullname() }}
+  labels:
+    app: {{ self.redmine__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.redmine__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.redmine__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        {%- if Values.extraVars %}
+{{ toYaml(Values.extraVars) | indent(8) }}
+        {%- endif %}
+        {%- if Values.databaseType.postgresql %}
+        - name: REDMINE_DB_POSTGRES
+          value: {{ self.redmine__postgresql__fullname() }}
+        - name: REDMINE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__postgresql__fullname() }}
+              key: postgres-password
+        {%- else %}
+        - name: REDMINE_DB_MYSQL
+          value: {{ self.redmine__mariadb__fullname() }}
+        - name: REDMINE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__mariadb__fullname() }}
+              key: mariadb-root-password
+        {%- endif %}
+        - name: REDMINE_USERNAME
+          value: {{ Values.redmineUsername | default("", true) | quote() }}
+        - name: REDMINE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__fullname() }}
+              key: redmine-password
+        - name: REDMINE_EMAIL
+          value: {{ Values.redmineEmail | default("", true) | quote() }}
+        - name: REDMINE_LANG
+          value: {{ Values.redmineLanguage | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__fullname() }}
+              key: smtp-password
+        - name: SMTP_TLS
+          value: {{ Values.smtpTls | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        volumeMounts:
+        - name: redmine-data
+          mountPath: /bitnami/redmine
+      volumes:
+      - name: redmine-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.persistence.existingClaim | default  (self.redmine__fullname()) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

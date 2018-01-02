@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.kube-state-metrics__fullname() }}
+  labels:
+    app: {{ self.kube-state-metrics__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  {%- if Values.prometheusScrape %}
+  annotations:
+    prometheus.io/scrape: '{{ Values.prometheusScrape }}'
+  {%- endif %}
+spec:
+  type: "{{ Values.service.type }}"
+  ports:
+  - name: "http"
+    protocol: TCP
+    port: {{ Values.service.port }}
+  {%- if Values.service.nodePort %}
+    nodePort: {{ Values.service.nodePort }}
+  {%- endif %}
+    targetPort: 8080
+{%- if Values.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.service.loadBalancerIP }}"
+{%- endif %}
+  selector:
+    app: {{ self.kube-state-metrics__name() }}
+    release: {{ Release.Name }}

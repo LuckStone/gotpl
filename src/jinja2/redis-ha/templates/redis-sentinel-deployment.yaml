@@ -1,0 +1,24 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}-sentinel
+spec:
+  replicas: {{ Values.replicas.sentinel }}
+  template:
+    metadata:
+      labels:
+        name: redis-sentinel
+        redis-sentinel: "true"
+        role: sentinel
+{{ self.labels__standard()  | indent(8) }}
+    spec:
+      containers:
+      - name: sentinel
+        image: {{ Values.redis_image }}
+        resources:
+{{ toYaml(Values.resources.master) | indent(10) }}
+        env:
+          - name: SENTINEL
+            value: "true"
+        ports:
+          - containerPort: 26379

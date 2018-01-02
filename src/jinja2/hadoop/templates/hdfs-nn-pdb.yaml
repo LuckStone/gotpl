@@ -1,0 +1,18 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ self.hadoop__fullname() }}-hdfs-nn
+  labels:
+    app: {{ self.hadoop__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+    component: hdfs-nn
+spec:
+  selector:
+    matchLabels:
+      app: {{ self.hadoop__name() }}
+      release: {{ Release.Name }}
+      component: hdfs-nn
+  minAvailable: {{ Values.hdfs.nameNode.pdbMinAvailable }}
+  

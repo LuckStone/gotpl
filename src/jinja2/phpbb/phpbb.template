@@ -1,0 +1,174 @@
+{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.phpbb__fullname() }}-apache
+  labels:
+    app: {{ self.phpbb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.apache.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.apache.size | quote() }}
+{%- if Values.persistence.apache.storageClass %}
+{%- if ("-"==Values.persistence.apache.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.apache.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.phpbb__fullname() }}-phpbb
+  labels:
+    app: {{ self.phpbb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.phpbb.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.phpbb.size | quote() }}
+{%- if Values.persistence.phpbb.storageClass %}
+{%- if ("-"==Values.persistence.phpbb.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.phpbb.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.phpbb__fullname() }}
+  labels:
+    app: {{ self.phpbb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.phpbbPassword %}
+  phpbb-password: {{ Values.phpbbPassword | b64enc() | quote() }}
+  {%- else %}
+  phpbb-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  smtp-password: {{ Values.smtpPassword | default("", true) | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.phpbb__fullname() }}
+  labels:
+    app: {{ self.phpbb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: {{ self.phpbb__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.phpbb__fullname() }}
+  labels:
+    app: {{ self.phpbb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.phpbb__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.phpbb__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.phpbb__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.phpbb__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: PHPBB_USERNAME
+          value: {{ Values.phpbbUser | default("", true) | quote() }}
+        - name: PHPBB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.phpbb__fullname() }}
+              key: phpbb-password
+        - name: PHPBB_EMAIL
+          value: {{ Values.phpbbEmail | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.phpbb__fullname() }}
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /ucp.php
+            port: http
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /ucp.php
+            port: http
+          initialDelaySeconds: 30
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: phpbb-data
+          mountPath: /bitnami/phpbb
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: phpbb-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.phpbb__fullname() }}-phpbb
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.phpbb__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}

@@ -1,0 +1,18 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ self.hadoop__fullname() }}-yarn-rm
+  labels:
+    app: {{ self.hadoop__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+    component: yarn-rm
+spec:
+  selector:
+    matchLabels:
+      app: {{ self.hadoop__name() }}
+      release: {{ Release.Name }}
+      component: yarn-rm
+  minAvailable: {{ Values.yarn.resourceManager.pdbMinAvailable }}
+  

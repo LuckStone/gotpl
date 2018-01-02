@@ -1,0 +1,20 @@
+name: desktop
+version: 0.6.13
+appVersion: 4.8.2
+description: Web publishing platform for building blogs and websites.
+icon: sencha.png
+keywords:
+- desktop
+- cms
+- blog
+- http
+- web
+- application
+- php
+home: http://www.desktop.com/
+sources:
+- https://github.com/bitnami/bitnami-docker-desktop
+maintainers:
+- name: bitnami-bot
+  email: containers@bitnami.com
+engine: jinja2

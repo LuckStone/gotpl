@@ -1,0 +1,26 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.kube-state-metrics__fullname() }}
+  labels:
+    app: {{ self.kube-state-metrics__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.kube-state-metrics__name() }}
+        release: "{{ Release.Name }}"
+    spec:
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.kube-state-metrics__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      containers:
+      - name: {{ Chart.Name }}
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        ports:
+        - containerPort: 8080
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}

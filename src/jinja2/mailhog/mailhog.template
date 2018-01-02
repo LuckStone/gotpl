@@ -1,0 +1,183 @@
+{%- if Values.ingress.enabled %}
+{%- set fullName =  self.mailhog__fullname() -%}
+{%- set path = Values.ingress.path -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+{%- if Values.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.ingress.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.mailhog__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ fullName }}
+spec:
+{%- if Values.ingress.tls.enabled %}
+  tls:
+    - hosts:
+      {%- for item in Values.ingress.hosts %}
+        - {{ item }}
+      {%- endfor %}
+      secretName: {{ self.mailhog__tlsSecret() }}
+{%- endif %}
+  rules:
+  {%- for item in Values.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - path: {{ path }}
+            backend:
+              serviceName: {{ fullName }}
+              servicePort: http
+  {%- endfor %}
+{%- endif %}
+#---{%- if (Values.auth.enabled) and ( not  Values.auth.existingSecret) -%}
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app: {{ self.mailhog__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mailhog__authFileSecret() }}
+type: Opaque
+data:
+  {{ Values.auth.fileName }}: {{ Values.auth.fileContents | b64enc() }}
+{%- endif -%}
+#---{%- if (Values.ingress.tls.enabled) and ( not  Values.ingress.tls.existingSecret) -%}
+apiVersion: v1
+kind: Secret
+metadata:
+{%- if Values.ingress.tls.secretAnnotations %}
+  annotations:
+{{ toYaml(Values.ingress.tls.secretAnnotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.mailhog__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mailhog__tlsSecret() }}
+type: Opaque
+data:
+{{ toYaml(Values.ingress.tls.secretContents) | indent(2) }}
+{%- endif -%}
+#---apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.service.annotations %}
+  annotations:
+{{ toYaml(Values.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.mailhog__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mailhog__fullname() }}
+spec:
+  type: "{{ Values.service.type }}"
+  clusterIP: "{{ Values.service.clusterIP }}"
+{%- if Values.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - name: http
+      port: {{ Values.service.port.http }}
+      protocol: TCP
+      targetPort: http
+      {%- if ((Values.service.type=="NodePort") and ( not  ( empty  Values.service.nodePort.http))) %}
+      nodePort: {{ Values.service.nodePort.http }}
+      {%- endif %}
+    - name: smtp
+      port: {{ Values.service.port.smtp }}
+      protocol: TCP
+      targetPort: smtp
+      {%- if ((Values.service.type=="NodePort") and ( not  ( empty  Values.service.nodePort.smtp))) %}
+      nodePort: {{ Values.service.nodePort.smtp }}
+      {%- endif %}
+  selector:
+    app: {{ self.mailhog__name() }}
+    release: {{ Release.Name }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.mailhog__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mailhog__fullname() }}
+spec:
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.mailhog__name() }}
+        release: {{ Release.Name }}
+    spec:
+      containers:
+        - name: {{ self.mailhog__name() }}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          env:
+            - name: MH_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          {%- if Values.auth.enabled %}
+            - name: MH_AUTH_FILE
+              value: /authdir/{{ Values.auth.fileName }}
+          {%- endif %}
+          {%- for key, value in Values.env.iteritems() %}
+            - name: "{{ key }}"
+              value: "{{ value }}"
+          {%- endfor %}
+          ports:
+            - name: http
+              containerPort: 8025
+              protocol: TCP
+            - name: smtp
+              containerPort: 1025
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 10
+            timeoutSeconds: 1
+          readinessProbe:
+            tcpSocket:
+              port: smtp
+          {%- if Values.auth.enabled %}
+          volumeMounts:
+            - name: authdir
+              mountPath: /authdir
+              readOnly: true
+          {%- endif %}
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.auth.enabled %}
+      volumes:
+        - name: authdir
+          secret:
+            secretName: {{ self.mailhog__authFileSecret() }}
+    {%- endif %}

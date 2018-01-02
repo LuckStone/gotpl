@@ -1,0 +1,103 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-sensu
+  labels:
+    heritage: "sensu"
+    release: "test"
+    chart: "sensu-0.2.0"
+spec:
+  type: ClusterIP
+  ports:
+  - port: 4567
+    targetPort: 4567
+  selector:
+    app: test-sensu
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-sensu
+  labels:
+    heritage: "sensu"
+    release: "test"
+    chart: "sensu-0.2.0"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-sensu
+        release: "test"
+    spec:
+      containers:
+      - name: server
+        image: "sstarcher/sensu:0.28"
+        imagePullPolicy: IfNotPresent
+        args:
+          - server
+        resources:
+          requests: {cpu: 100m, memory: 100Mi}
+        env:
+        - name: API_HOST
+          value: localhost
+        - name: API_PORT
+          value: '4567'
+        - name: REDIS_HOST
+          value: test-redis
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-redis
+              key: redis-password
+        - name: REDIS_DB
+          value: "0"
+        - name: REDIS_AUTO_RECONNECT
+          value: "True"
+        - name: REDIS_RECONNECT_ON_ERROR
+          value: "True"
+        - name: REDIS_PORT
+          value: "6379"
+      - name: api
+        image: "sstarcher/sensu:0.28"
+        imagePullPolicy: IfNotPresent
+        args:
+          - api
+        resources:
+          requests: {cpu: 50m, memory: 100Mi}
+        env:
+        - name: REDIS_HOST
+          value: test-redis
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-redis
+              key: redis-password
+        - name: REDIS_DB
+          value: "0"
+        - name: REDIS_AUTO_RECONNECT
+          value: "True"
+        - name: REDIS_RECONNECT_ON_ERROR
+          value: "True"
+        - name: REDIS_PORT
+          value: "6379"
+        ports:
+        - containerPort: 4567
+        readinessProbe:
+          httpGet:
+            path: /info
+            port: 4567
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /info
+            port: 4567
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+
+

@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.dask-distributed__jupyter-fullname() }}-config
+  labels:
+    app: {{ self.dask-distributed__name() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.jupyter.component }}"
+data:
+  jupyter_notebook_config.py: |
+    c = get_config()
+    c.NotebookApp.password = '{{ Values.jupyter.password }}'
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.dask-distributed__jupyter-fullname() }}
+  labels:
+    app: {{ self.dask-distributed__name() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.jupyter.component }}"
+spec:
+  ports:
+    - port: {{ Values.jupyter.servicePort }}
+      targetPort: {{ Values.jupyter.containerPort }}
+  selector:
+    app: {{ self.dask-distributed__name() }}
+    release: {{ Release.Name | quote() }}
+    component: "{{ Release.Name }}-{{ Values.jupyter.component }}"
+  type: {{ Values.jupyter.serviceType }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.dask-distributed__scheduler-fullname() }}
+  labels:
+    app: {{ self.dask-distributed__name() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.scheduler.component }}"
+spec:
+  ports:
+    - name: {{ self.dask-distributed__scheduler-fullname() }}
+      port: {{ Values.scheduler.servicePort }}
+      targetPort: {{ Values.scheduler.containerPort }}
+    - name: {{ self.dask-distributed__webui-fullname() }}
+      port: {{ Values.webUI.servicePort }}
+      targetPort: {{ Values.webUI.containerPort }}
+  selector:
+    app: {{ self.dask-distributed__name() }}
+    release: {{ Release.Name | quote() }}
+    component: "{{ Release.Name }}-{{ Values.scheduler.component }}"
+  type: {{ Values.scheduler.serviceType }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.dask-distributed__jupyter-fullname() }}
+  labels:
+    app: {{ self.dask-distributed__name() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.jupyter.component }}"
+spec:
+  replicas: {{ Values.jupyter.replicas }}
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ self.dask-distributed__name() }}
+        release: {{ Release.Name | quote() }}
+        component: "{{ Release.Name }}-{{ Values.jupyter.component }}"
+    spec:
+      containers:
+        - name: {{ self.dask-distributed__jupyter-fullname() }}
+          image: "{{ Values.jupyter.image }}:{{ Values.jupyter.imageTag }}"
+          ports:
+            - containerPort: {{ Values.jupyter.containerPort }}
+          resources:
+{{ toYaml(Values.jupyter.resources) | indent(12) }}
+          volumeMounts:
+          - name: config-volume
+            mountPath: /home/jovyan/.jupyter
+      volumes:
+      - name: config-volume
+        configMap:
+          name: {{ self.dask-distributed__jupyter-fullname() }}-config
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.dask-distributed__scheduler-fullname() }}
+  labels:
+    app: {{ self.dask-distributed__name() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.scheduler.component }}"
+spec:
+  replicas: {{ Values.scheduler.replicas }}
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ self.dask-distributed__name() }}
+        release: {{ Release.Name | quote() }}
+        component: "{{ Release.Name }}-{{ Values.scheduler.component }}"
+    spec:
+      containers:
+        - name: {{ self.dask-distributed__scheduler-fullname() }}
+          image: "{{ Values.scheduler.image }}:{{ Values.scheduler.imageTag }}"
+          command: ["dask-scheduler", "--port", "{{ Values.scheduler.servicePort }}", "--bokeh-port", "{{ Values.webUI.containerPort }}"]
+          ports:
+            - containerPort: {{ Values.scheduler.containerPort }}
+            - containerPort: {{ Values.webUI.containerPort }}
+          resources:
+{{ toYaml(Values.scheduler.resources) | indent(12) }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.dask-distributed__worker-fullname() }}
+  labels:
+    app: {{ self.dask-distributed__name() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.worker.component }}"
+spec:
+  replicas: {{ Values.worker.replicas }}
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ self.dask-distributed__name() }}
+        release: {{ Release.Name | quote() }}
+        component: "{{ Release.Name }}-{{ Values.worker.component }}"
+    spec:
+      containers:
+        - name: {{ self.dask-distributed__worker-fullname() }}
+          image: "{{ Values.worker.image }}:{{ Values.worker.imageTag }}"
+          command: ["dask-worker", "{{ self.dask-distributed__scheduler-fullname() }}:{{ Values.scheduler.servicePort }}"]
+          ports:
+            - containerPort: {{ Values.worker.containerPort }}
+          resources:
+{{ toYaml(Values.worker.resources) | indent(12) }}

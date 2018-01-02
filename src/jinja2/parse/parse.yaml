@@ -1,0 +1,131 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-parse
+  labels:
+    app: parse
+    chart: "parse-0.2.7"
+    release: "test"
+    heritage: "parse"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-parse
+  labels:
+    app: parse
+    chart: "parse-0.2.7"
+    release: "test"
+    heritage: "parse"
+type: Opaque
+data:
+  master-key: "Cmpxc3F1dnNzcW8K"
+  parse-dashboard-password: "CnBwZnl2a2l5dWQK"
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-parse
+  labels:
+    app: parse
+    chart: "parse-0.2.7"
+    release: "test"
+    heritage: "parse"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: ""
+  ports:
+  - name: server-http
+    port: 1337
+    targetPort: server-http
+  - name: dashboard-http
+    port: 80
+    targetPort: dashboard-http
+  selector:
+    app: parse
+    release: "test"
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-parse-server
+  labels:
+    app: parse
+    chart: "parse-0.2.7"
+    release: "test"
+    heritage: "parse"
+    component: "server"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: parse
+        release: "test"
+        component: "server"
+    spec:
+      containers:
+      - name: test-parse
+        image: "bitnami/parse:2.6.3-r0"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: PARSE_HOST
+          value: "0.0.0.0"
+        - name: PARSE_PORT_NUMBER
+          value: "1337"
+        - name: PARSE_MOUNT_PATH
+          value: "/parse"
+        - name: PARSE_APP_ID
+          value: "myappID"
+        - name: PARSE_MASTER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: test-parse
+              key: master-key
+        - name: MONGODB_HOST
+          value: test-mongodb
+        - name: MONGODB_PORT
+          value: "27017"
+        ports:
+        - name: server-http
+          containerPort: 1337
+        livenessProbe:
+          httpGet:
+            path: /parse/users
+            port: server-http
+            httpHeaders:
+            - name: X-Parse-Application-Id
+              value: myappID
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /parse/users
+            port: server-http
+            httpHeaders:
+            - name: X-Parse-Application-Id
+              value: myappID
+          initialDelaySeconds: 30
+        resources:
+          None
+        volumeMounts:
+        - name: parse-data
+          mountPath: /bitnami/parse
+      volumes:
+      - name: parse-data
+        persistentVolumeClaim:
+          claimName: test-parse

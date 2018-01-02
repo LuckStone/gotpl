@@ -1,0 +1,76 @@
+{%- if (Values.omsagent.secret.key!="<your_workspace_key>") and (Values.omsagent.secret.wsid!="<your_workspace_id>") %}
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: {{ self.msoms__fullname() }}
+  labels:
+    app: {{ self.msoms__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+spec:
+ updateStrategy:
+    type: RollingUpdate
+ template:
+  metadata:
+   labels:
+    release: {{ Release.Name }}
+    app: {{ self.msoms__name() }}
+   annotations:
+    agentVersion: 1.4.0-45
+    dockerProviderVersion: 10.0.0-27
+  spec:
+   containers:
+     - name: {{ self.msoms__name() }}
+       image: "microsoft/oms:{{ Values.omsagent.image.tag }}"
+       imagePullPolicy: {{ Values.omsagent.image.pullPolicy }}
+       resources:
+{{ toYaml(Values.resources) | indent(8) }}
+       securityContext:
+         privileged: true
+       ports:
+       - containerPort: 25225
+         protocol: TCP
+       - containerPort: 25224
+         protocol: UDP
+       volumeMounts:
+        - mountPath: /var/run/docker.sock
+          name: docker-sock
+        - mountPath: /var/log
+          name: host-log
+        - mountPath: /etc/omsagent-secret
+          name: omsagent-secret
+          readOnly: true
+       livenessProbe:
+        exec:
+         command:
+         - /bin/bash
+         - -c
+         - ps -ef | pgrep omsagent
+        initialDelaySeconds: 60
+        periodSeconds: 60
+   volumes:
+    - name: docker-sock
+      hostPath:
+       path: /var/run/docker.sock
+    - name: host-log
+      hostPath:
+       path: /var/log
+    - name: omsagent-secret
+      secret:
+       secretName: {{ template "msoms.fullname" . }}
+{%- endif %}               
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.msoms__fullname() }}
+  labels:
+    app: {{ self.msoms__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+type: Opaque
+data:
+  WSID: {{ required "A valid workspace id is required!" Values.omsagent.secret.wsid | b64enc() | quote() }}
+  KEY: {{ required "A valid workspace key is required!" Values.omsagent.secret.key | b64enc() | quote() }}
+  DOMAIN: {{ Values.omsagent.domain | b64enc() | quote() }}

@@ -1,0 +1,33 @@
+{%- if Values.pushgateway.enabled and Values.pushgateway.ingress.enabled -%}
+{%- set releaseName = Release.Name -%}
+{%- set serviceName =  self.prometheus__pushgateway__fullname() %}
+{%- set servicePort = Values.pushgateway.service.servicePort -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+{%- if Values.pushgateway.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.pushgateway.ingress.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.pushgateway.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.prometheus__pushgateway__fullname() }}
+spec:
+  rules:
+  {%- for item in Values.pushgateway.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - backend:
+              serviceName: {{ serviceName }}
+              servicePort: {{ servicePort }}
+  {%- endfor -%}
+{%- if Values.pushgateway.ingress.tls %}
+  tls:
+{{ toYaml(Values.pushgateway.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}

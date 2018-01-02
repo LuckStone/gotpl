@@ -1,0 +1,30 @@
+{%- if Values.networkPolicy.enabled %}
+kind: NetworkPolicy
+apiVersion: {{ self.networkPolicy__apiVersion() }}
+metadata:
+  name: "{{ self.redis__fullname() }}"
+  labels:
+    app: {{ self.redis__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ self.redis__fullname() }}
+  ingress:
+    # Allow inbound connections
+    - ports:
+      - port: 6379
+      {%- if  not  Values.networkPolicy.allowExternal %}
+      from:
+        - podSelector:
+            matchLabels:
+              {{ self.redis__fullname() }}-client: "true"
+      {%- endif %}
+    {%- if Values.metrics.enabled %}
+    # Allow prometheus scrapes for metrics
+    - ports:
+      - port: 9121
+    {%- endif %}
+{%- endif %}

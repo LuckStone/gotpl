@@ -1,0 +1,138 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-jasperreports
+  labels:
+    app: test-jasperreports
+    chart: "jasperreports-0.2.0"
+    release: "test"
+    heritage: "jasperreports"
+  annotations:
+    volume.alpha.kubernetes.io/storage-class: default
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-jasperreports
+  labels:
+    app: test-jasperreports
+    chart: "jasperreports-0.2.0"
+    release: "test"
+    heritage: "jasperreports"
+type: Opaque
+data:
+  jasperreports-password: "Cm9iY2ZqemlxZ3AK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-jasperreports
+  labels:
+    app: test-jasperreports
+    chart: "jasperreports-0.2.0"
+    release: "test"
+    heritage: "jasperreports"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  selector:
+    app: test-jasperreports
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-jasperreports
+  labels:
+    app: test-jasperreports
+    chart: "jasperreports-0.2.0"
+    release: "test"
+    heritage: "jasperreports"
+spec:
+  template:
+    metadata:
+      labels:
+        app: test-jasperreports
+    spec:
+      containers:
+      - name: test-jasperreports
+        image: "bitnami/jasperreports:6.4.0-r1"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: JASPERREPORTS_USERNAME
+          value: "user"
+        - name: JASPERREPORTS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-jasperreports
+              key: jasperreports-password
+        - name: JASPERREPORTS_EMAIL
+          value: "user@example.com"
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_EMAIL
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-jasperreports
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: ""
+        ports:
+        - name: http
+          containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /jasperserver/login.html
+            port: http
+          initialDelaySeconds: 300
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /jasperserver/login.html
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: jasperreports-data
+          mountPath: /bitnami/jasperreports
+      volumes:
+      - name: jasperreports-data
+        persistentVolumeClaim:
+          claimName: test-jasperreports

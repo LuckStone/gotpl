@@ -1,0 +1,175 @@
+{%- if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+ name: {{ self.fullname() }}
+ labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- if Values.ingress.annotations -%}
+ annotations:
+   {%- for key, value in Values.ingress.annotations.iteritems() %}
+     {{ key }}: {{ value | quote() }}
+   {%- endfor %}
+{%- endif -%}
+spec:
+  rules:
+    - host: {{ Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ self.fullname() }}
+              servicePort: http
+{%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+{%- endif -%}
+{%- endif -%}
+#---{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.password %}
+  password: {{ Values.password | default("", true) | b64enc() | quote() }}
+  {%- else %}
+  password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+{%- if not Values.healthcheckHttps %}
+  - name: http
+    port: 80
+    targetPort: http
+{%- if Values.serviceType=="NodePort" and Values.nodePort %}
+    nodePort: {{ Values.nodePort }}
+{%- endif %}
+{%- else %}
+  - name: https
+    port: 443
+    targetPort: https
+{%- endif %}
+  selector:
+    app: {{ self.fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: EXTJS_VERSION
+          value: "4.0"
+        - name: ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: password
+        ports:
+{%- if not Values.healthcheckHttps %}
+        - name: http
+          containerPort: 80
+{% else %}
+        - name: https
+          containerPort: 443
+{%- endif %}
+        livenessProbe:
+          httpGet:
+            path: /
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /root/volumes
+          name: data
+          subPath: cache
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+      - name: data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {%- endif -%}

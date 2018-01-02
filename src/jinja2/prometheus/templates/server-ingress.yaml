@@ -1,0 +1,33 @@
+{%- if Values.server.ingress.enabled -%}
+{%- set releaseName = Release.Name -%}
+{%- set serviceName =  self.prometheus__server__fullname() %}
+{%- set servicePort = Values.server.service.servicePort -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+{%- if Values.server.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.server.ingress.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.server.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.prometheus__server__fullname() }}
+spec:
+  rules:
+  {%- for item in Values.server.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - backend:
+              serviceName: {{ serviceName }}
+              servicePort: {{ servicePort }}
+  {%- endfor -%}
+{%- if Values.server.ingress.tls %}
+  tls:
+{{ toYaml(Values.server.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}

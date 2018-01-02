@@ -1,0 +1,28 @@
+{%- if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.kube-ops-view__fullname() }}
+  labels:
+    app: {{ self.kube-ops-view__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- if Values.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.ingress.annotations) | indent(4) }}
+{%- endif %}
+spec:
+  rules:
+    - host: {{ Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ self.kube-ops-view__fullname() }}
+              servicePort: {{ Values.service.externalPort }}
+{%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+{%- endif -%}
+{%- endif -%}

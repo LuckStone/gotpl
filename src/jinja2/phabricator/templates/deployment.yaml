@@ -1,0 +1,106 @@
+{%- if self.host() -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: PHABRICATOR_HOST
+          value: {{ self.host()  | quote() }}
+        - name: PHABRICATOR_USERNAME
+          value: {{ Values.phabricatorUsername | default("", true) | quote() }}
+        - name: PHABRICATOR_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: phabricator-password
+        - name: PHABRICATOR_EMAIL
+          value: {{ Values.phabricatorEmail | default("", true) | quote() }}
+        - name: PHABRICATOR_FIRSTNAME
+          value: {{ Values.phabricatorFirstName | default("", true) | quote() }}
+        - name: PHABRICATOR_LASTNAME
+          value: {{ Values.phabricatorLastName | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /auth/
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 180
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /auth/
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.host()  | quote() }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: phabricator-data
+          mountPath: /bitnami/phabricator
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: phabricator-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-phabricator
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif -%}

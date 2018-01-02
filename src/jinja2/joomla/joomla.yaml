@@ -1,0 +1,163 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-joomla-apache
+  labels:
+    app: test-joomla
+    chart: "joomla-0.5.2"
+    release: "test"
+    heritage: "joomla"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-joomla-joomla
+  labels:
+    app: test-joomla
+    chart: "joomla-0.5.2"
+    release: "test"
+    heritage: "joomla"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-joomla
+  labels:
+    app: test-joomla
+    chart: "joomla-0.5.2"
+    release: "test"
+    heritage: "joomla"
+type: Opaque
+data:
+  joomla-password: "CmdnYnllaHVrdGgK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-joomla
+  labels:
+    app: test-joomla
+    chart: "joomla-0.5.2"
+    release: "test"
+    heritage: "joomla"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: test-joomla
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-joomla
+  labels:
+    app: test-joomla
+    chart: "joomla-0.5.2"
+    release: "test"
+    heritage: "joomla"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-joomla
+    spec:
+      containers:
+      - name: test-joomla
+        image: "bitnami/joomla:3.8.1-r0"
+        imagePullPolicy: ""
+        env:
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: JOOMLA_USERNAME
+          value: "user"
+        - name: JOOMLA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-joomla
+              key: joomla-password
+        - name: JOOMLA_EMAIL
+          value: "user@example.com"
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-joomla
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: ""
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: joomla-data
+          mountPath: /bitnami/joomla
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: joomla-data
+        persistentVolumeClaim:
+          claimName: test-joomla-joomla
+      - name: apache-data
+        persistentVolumeClaim:
+          claimName: test-joomla-apache

@@ -1,0 +1,13 @@
+apiVersion: policy/v1beta1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ self.memcached__fullname() }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ self.memcached__fullname() }}
+      chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+      release: "{{ Release.Name }}"
+      heritage: "{{ Release.Service }}"
+  minAvailable: {{ Values.pdbMinAvailable }}
+  

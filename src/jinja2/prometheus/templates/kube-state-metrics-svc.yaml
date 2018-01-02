@@ -1,0 +1,46 @@
+{%- if Values.kubeStateMetrics.enabled -%}
+apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.kubeStateMetrics.service.annotations %}
+  annotations:
+{{ toYaml(Values.kubeStateMetrics.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.kubeStateMetrics.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+{%- if Values.kubeStateMetrics.service.labels %}
+{{ toYaml(Values.kubeStateMetrics.service.labels) | indent(4) }}
+{%- endif %}
+  name: {{ self.prometheus__kubeStateMetrics__fullname() }}
+spec:
+{%- if Values.kubeStateMetrics.service.clusterIP %}
+  clusterIP: {{ Values.kubeStateMetrics.service.clusterIP }}
+{%- endif %}
+{%- if Values.kubeStateMetrics.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.kubeStateMetrics.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.kubeStateMetrics.service.loadBalancerIP %}
+  loadBalancerIP: {{ Values.kubeStateMetrics.service.loadBalancerIP }}
+{%- endif %}
+{%- if Values.kubeStateMetrics.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+  {%- for cidr in Values.kubeStateMetrics.service.loadBalancerSourceRanges %}
+    - {{ cidr }}
+  {%- endfor %}
+{%- endif %}
+  ports:
+    - name: http
+      port: {{ Values.kubeStateMetrics.service.servicePort }}
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app: {{ self.prometheus__name() }}
+    component: "{{ Values.kubeStateMetrics.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.kubeStateMetrics.service.type }}"
+{%- endif %}

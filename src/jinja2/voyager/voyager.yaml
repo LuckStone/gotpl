@@ -1,0 +1,68 @@
+
+
+
+
+---
+
+
+
+
+---
+
+
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: voyager-test
+  labels:
+    app: "voyager"
+    chart: "voyager-1.2.0"
+    release: "test"
+    heritage: "voyager"
+spec:
+  ports:
+  - name: http
+    port: 56790
+    targetPort: http
+  selector:
+    app: "voyager"
+    release: "test"
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: voyager-test
+  labels:
+    chart: "voyager-1.2.0"
+    app: "voyager"
+    heritage: "voyager"
+    release: "test"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: "voyager"
+        release: "test"
+    spec:
+      serviceAccountName:"default"
+      containers:
+      - name: operator
+        image: appscode/voyager:3.2.1
+        args:
+        - run
+        - --cloud-provider=None
+        - --cloud-config=
+        - --v=3
+        - --rbac=False
+        ports:
+        - containerPort: 56790
+          name: http
+          protocol: TCP

@@ -1,0 +1,128 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ self.kube-ops-view__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.kube-ops-view__fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.kube-ops-view__fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.kube-ops-view__fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  labels:
+    app: {{ self.kube-ops-view__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.kube-ops-view__fullname() }}
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "pods"]
+  verbs: ["list"]
+- apiGroups: [""]
+  resources: ["services/proxy"]
+  resourceNames: ["heapster"]
+  verbs: ["get"]
+{%- endif -%}
+#---{%- if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.kube-ops-view__fullname() }}
+  labels:
+    app: {{ self.kube-ops-view__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- if Values.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.ingress.annotations) | indent(4) }}
+{%- endif %}
+spec:
+  rules:
+    - host: {{ Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ self.kube-ops-view__fullname() }}
+              servicePort: {{ Values.service.externalPort }}
+{%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+{%- endif -%}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: {{ self.kube-ops-view__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.kube-ops-view__fullname() }}
+{%- endif -%}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.kube-ops-view__fullname() }}
+{%- if Values.service.annotations %}
+  annotations:
+{{ toYaml(Values.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+{%- if Values.service.labels %}
+{{ toYaml(Values.service.labels) | indent(4) }}
+{%- endif %}
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - port: {{ Values.service.externalPort }}
+    targetPort: {{ Values.service.internalPort }}
+    protocol: TCP
+  selector:
+    app: {{ self.kube-ops-view__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.kube-ops-view__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.kube-ops-view__fullname() }}
+    spec:
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.kube-ops-view__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ Values.service.internalPort }}
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: {{ Values.service.internalPort }}
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: {{ Values.service.internalPort }}
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}

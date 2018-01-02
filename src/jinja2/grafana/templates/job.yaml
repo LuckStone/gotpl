@@ -1,0 +1,45 @@
+{%- if Values.server.setDatasource.enabled -%}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}-set-datasource
+spec:
+  activeDeadlineSeconds: {{ Values.server.setDatasource.activeDeadlineSeconds | default(300, true) }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.grafana__fullname() }}
+        component: "{{ Values.server.name }}"
+        release: "{{ Release.Name }}"
+    spec:
+      containers:
+      - name: {{ self.grafana__server__fullname() }}-set-datasource
+        image: "{{ Values.server.setDatasource.image }}"
+        env:
+        - name: ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.grafana__server__fullname() }}
+              key: grafana-admin-user
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.grafana__server__fullname() }}
+              key: grafana-admin-password
+        args:
+          - "http://$(ADMIN_USER):$(ADMIN_PASSWORD)@{{ self.grafana__fullname() }}:{{ Values.server.httpPort }}/api/datasources"
+          - "--max-time"
+          - "10"
+          - "-H"
+          - "Content-Type: application/json;charset=UTF-8"
+          - "--data-binary"
+          {%- set datasource = Values.server.setDatasource.datasource -%}
+          - "{\"name\":\"{{ datasource.name }}\",\"type\":\"{{ datasource.type }}\",\"url\":\"{{ datasource.url }}\",\"database\":\"{{ datasource.database }}\",\"jsonData\":{ {{ datasource.jsonData }} },\"access\":\"{{ datasource.access }}\",\"isDefault\":{{ datasource.isDefault }}}"
+      restartPolicy: {{ Values.server.setDatasource.restartPolicy }}
+{%- endif -%}

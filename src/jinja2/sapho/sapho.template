@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.sapho__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - port: {{ Values.service.externalPort }}
+    targetPort: {{ Values.service.internalPort }}
+    protocol: TCP
+    name: {{ Values.service.name }}
+  selector:
+    app: {{ self.sapho__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.sapho__fullname() }}
+  labels:
+    app: {{ self.sapho__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.sapho__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.sapho__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: SAPHO_DB_HOSTNAME
+          value: {{ self.sapho__mysql__fullname() }}
+        - name: SAPHO_DB_PORT
+          value: {{ Values.saphoDBport | quote() }}
+        - name: SAPHO_DB_TYPE
+          value: {{ Values.saphoDBtype }}
+        - name: SAPHO_DB_USERNAME
+          value: {{ Values.saphoDBuser }}
+        - name: SAPHO_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.sapho__mysql__fullname() }}
+              key: mysql-root-password
+        ports:
+        - name: http
+          containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 180
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}

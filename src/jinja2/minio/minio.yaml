@@ -1,0 +1,198 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-minio-config-cm
+  labels:
+    app: test-minio
+    chart: "minio-0.3.1"
+    release: "test"
+    heritage: "minio"
+data:
+  config.json: |-
+    {
+      "version": "19",
+      "credential": {
+        "accessKey": "AKIAIOSFODNN7EXAMPLE",
+        "secretKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+      },
+      "region": "us-east-1",
+      "browser": "on",
+      "logger": {
+        "console": {
+          "enable": true
+        },
+        "file": {
+          "enable": false,
+          "fileName": ""
+        }
+      },
+      "notify": {
+        "amqp": {
+          "1": {
+            "enable": False,
+            "url": "",
+            "exchange": "",
+            "routingKey": "",
+            "exchangeType": "",
+            "deliveryMode": 0,
+            "mandatory": False,
+            "immediate": False,
+            "durable": False,
+            "internal": False,
+            "noWait": False,
+            "autoDeleted": False
+          }
+        },
+        "nats": {
+          "1": {
+            "enable": False,
+            "address": "",
+            "subject": "",
+            "username": "",
+            "password": "",
+            "token": "",
+            "secure": False,
+            "pingInterval": 0,
+            "streaming": {
+              "enable": False,
+              "clusterID": "",
+              "clientID": "",
+              "async": False,
+              "maxPubAcksInflight": 0
+            }
+          }
+        },
+        "elasticsearch": {
+          "1": {
+            "enable": False,
+            "format": "namespace",
+            "url": "",
+            "index": ""
+          }
+        },
+        "redis": {
+          "1": {
+            "enable": False,
+            "format": "namespace",
+            "address": "",
+            "password": "",
+            "key": ""
+          }
+        },
+        "postgresql": {
+          "1": {
+            "enable": False,
+            "format": "namespace",
+            "connectionString": "",
+            "table": "",
+            "host": "",
+            "port": "",
+            "user": "",
+            "password": "",
+            "database": ""
+          }
+        },
+        "kafka": {
+          "1": {
+            "enable": False,
+            "brokers": null,
+            "topic": ""
+          }
+        },
+        "webhook": {
+          "1": {
+            "enable": False,
+            "endpoint": ""
+          }
+        },
+        "mysql": {
+          "1": {
+            "enable": False,
+            "format": "namespace",
+            "dsnString": "",
+            "table": "",
+            "host": "",
+            "port": "",
+            "user": "",
+            "password": "",
+            "database": ""
+          }
+        },
+        "mqtt": {
+          "1": {
+            "enable": False,
+            "broker": "",
+            "topic": "",
+            "qos": 0,
+            "clientId": "",
+            "username": "",
+            "password": ""
+          }
+        }
+      }
+    }
+
+
+---
+
+
+
+
+---
+
+
+
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-minio-user
+  labels:
+    app: test-minio
+    chart: "minio-0.3.1"
+    release: "test"
+    heritage: "minio"
+type: Opaque
+data:
+  accesskey: QUtJQUlPU0ZPRE5ON0VYQU1QTEU=
+  secretkey: d0phbHJYVXRuRkVNSS9LN01ERU5HL2JQeFJmaUNZRVhBTVBMRUtFWQ==
+
+
+---
+
+
+
+
+---
+
+kind: Service
+apiVersion: v1
+metadata:
+  name: test-minio-svc
+  labels:
+    app: test-minio
+    chart: "minio-0.3.1"
+    release: "test"
+    heritage: "minio"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 
+  selector:
+    app: test-minio
+  ports:
+    - name: service
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+
+
+---
+
+
+
+
+---
+

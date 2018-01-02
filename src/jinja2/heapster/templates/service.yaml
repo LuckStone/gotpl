@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.heapster__service__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: {{ self.heapster__fullname() }}
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  {%- if Values.service.labels -%}
+    {%- for key, value in Values.service.labels.iteritems() %}
+    {{ key }}: {{ value }}
+    {%- endfor %}
+  {%- endif %}
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - port: {{ Values.service.externalPort }}
+    targetPort: {{ Values.service.internalPort }}
+    protocol: TCP
+  selector:
+    app: {{ self.heapster__fullname() }}

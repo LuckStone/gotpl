@@ -1,0 +1,78 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: EXTJS_VERSION
+          value: "4.0"
+        - name: ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: password
+        ports:
+{%- if not Values.healthcheckHttps %}
+        - name: http
+          containerPort: 80
+{% else %}
+        - name: https
+          containerPort: 443
+{%- endif %}
+        livenessProbe:
+          httpGet:
+            path: /
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /root/volumes
+          name: data
+          subPath: cache
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+      - name: data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {%- endif -%}

@@ -1,0 +1,76 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.cluster-autoscaler__name() }}
+        release: {{ Release.Name }}
+      {%- if Values.podLabels %}
+{{ toYaml(Values.podLabels) | indent(8) }}
+      {%- endif %}
+    spec:
+      containers:
+        - name: {{ self.cluster-autoscaler__name() }}
+        {%- if Values.cloudProvider=="spotinst" %}
+          image: "{{ Values.spotinst.image.repository }}:{{ Values.spotinst.image.tag }}"
+          imagePullPolicy: "{{ Values.spotinst.image.pullPolicy }}"
+        {%- else %}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+        {%- endif %}
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider={{ Values.cloudProvider }}
+            - --namespace={{ Release.Namespace }}
+          {%- for item in Values.autoscalingGroups %}
+            - --nodes={{ item.minSize }}:{{ item.maxSize }}:{{ item.name }}
+          {%- endfor %}
+          {%- for key, value in Values.extraArgs.iteritems() %}
+            - --{{ key }}={{ value }}
+          {%- endfor %}
+          env:
+          {%- if Values.cloudProvider=="aws" %}
+            - name: AWS_REGION
+              value: "{{ Values.awsRegion }}"
+          {%- elif Values.cloudProvider=="spotinst" %}
+            - name: SPOTINST_TOKEN
+              value: "{{ Values.spotinst.token }}"
+            - name: SPOTINST_ACCOUNT
+              value: "{{ Values.spotinst.account }}"
+          {%- endif %}
+          livenessProbe:
+            httpGet:
+              path: /health-check
+              port: 8085
+          ports:
+            - containerPort: 8085
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs/ca-certificates.crt
+              readOnly: true
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.cluster-autoscaler__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: /etc/ssl/certs/ca-certificates.crt

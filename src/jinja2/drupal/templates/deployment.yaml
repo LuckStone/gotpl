@@ -1,0 +1,81 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.drupal__fullname() }}
+  labels:
+    app: {{ self.drupal__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.drupal__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.drupal__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.drupal__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.drupal__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: DRUPAL_USERNAME
+          value: {{ Values.drupalUsername | default("", true) | quote() }}
+        - name: DRUPAL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.drupal__fullname() }}
+              key: drupal-password
+        - name: DRUPAL_EMAIL
+          value: {{ Values.drupalEmail | default("", true) | quote() }}
+{%- if Values.extraVars %}
+{{ toYaml(Values.extraVars) | indent(8) }}
+{%- endif %}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+{{ toYaml(Values.livenessProbe) | indent(10) }}
+        readinessProbe:
+{{ toYaml(Values.readinessProbe) | indent(10) }}
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: drupal-data
+          mountPath: {{ Values.volumeMounts.drupal.mountPath }}
+        {%- if Values.volumeMounts.apache.mountPath %}
+        - name: apache-data
+          mountPath: {{ Values.volumeMounts.apache.mountPath }}
+        {%- endif %}
+      {%- if Values.imagePullSecrets %}
+      imagePullSecrets:
+{{ toYaml(Values.imagePullSecrets) | indent(8) }}
+      {%- endif %}
+      volumes:
+      - name: drupal-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.persistence.drupal.existingClaim | default ("%s-drupal" | format((self.drupal__fullname() )) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      {%- if Values.volumeMounts.apache.mountPath %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.drupal__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      {%- endif %}

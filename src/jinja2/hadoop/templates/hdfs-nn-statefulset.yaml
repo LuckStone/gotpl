@@ -1,0 +1,82 @@
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: {{ self.hadoop__fullname() }}-hdfs-nn
+  annotations:
+    checksum/config: ""
+  labels:
+    app: {{ self.hadoop__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+    component: hdfs-nn
+spec:
+  serviceName: {{ self.hadoop__fullname() }}-hdfs-nn
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.hadoop__name() }}
+        release: {{ Release.Name }}
+        component: hdfs-nn
+    spec:
+      affinity:
+        podAntiAffinity:
+        {%- if Values.antiAffinity=="hard" %}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                app:  {{ self.hadoop__name() }}
+                release: {{ Release.Name | quote() }}
+                component: hdfs-nn
+        {%- elif Values.antiAffinity=="soft" %}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 5
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app:  {{ self.hadoop__name() }}
+                  release: {{ Release.Name | quote() }}
+                  component: hdfs-nn
+        {%- endif %}
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: hdfs-nn
+        image: {{ Values.image }}
+        imagePullPolicy: {{ Values.imagePullPolicy }}
+        command:
+        - "/bin/bash"
+        - "/tmp/hadoop-config/bootstrap.sh"
+        - "-d"
+        resources:
+{{ toYaml(Values.hdfs.nameNode.resources) | indent(10) }}
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 50070
+          initialDelaySeconds: 5
+          timeoutSeconds: 2
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 50070
+          initialDelaySeconds: 10
+          timeoutSeconds: 2
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /tmp/hadoop-config
+        - name: dfs
+          mountPath: /root/hdfs/namenode
+      volumes:
+      - name: hadoop-config
+        configMap:
+          name: {{ self.hadoop__fullname() }}
+      - name: dfs
+      {%- if Values.persistence.nameNode.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.hadoop__fullname() }}-hdfs-nn
+      {%- else %}        
+        emptyDir: {}
+      {%- endif %}

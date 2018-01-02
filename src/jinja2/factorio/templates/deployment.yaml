@@ -1,0 +1,101 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.factorio__fullname() }}
+  labels:
+    app: {{ self.factorio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.factorio__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.factorio__fullname() }}
+        image: "{{ Values.image }}:{{ Values.imageTag }}"
+        imagePullPolicy: Always
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        env:
+        - name: FACTORIO_SERVER_NAME
+          value: {{ Values.factorioServer.name | quote() }}
+        - name: FACTORIO_DESCRIPTION
+          value: {{ Values.factorioServer.description | quote() }}
+        - name: FACTORIO_PORT
+          value: {{ Values.factorioServer.port | quote() }}
+        - name: FACTORIO_MAX_PLAYERS
+          value: {{ Values.factorioServer.maxPlayers | quote() }}
+        - name: FACTORIO_IS_PUBLIC
+          value: {{ Values.factorioServer.isPublic | quote() }}
+        - name: FACTORIO_REQUIRE_USER_VERIFICATION
+          value: {{ Values.factorioServer.verifyIdentity | quote() }}
+        - name: FACTORIO_ALLOW_COMMANDS
+          value: {{ Values.factorioServer.allowCommands | quote() }}
+        - name: FACTORIO_NO_AUTO_PAUSE
+          value: {{ Values.factorioServer.noAutoPause | quote() }}
+        - name: FACTORIO_AUTOSAVE_INTERVAL
+          value: {{ Values.factorioServer.autosave.interval | quote() }}
+        - name: FACTORIO_AUTOSAVE_SLOTS
+          value: {{ Values.factorioServer.autosave.slots | quote() }}
+
+        {%- if Values.factorioServer.password %}
+        - name: FACTORIO_GAME_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.factorio__fullname() }}
+              key: server-password
+        {%- endif %}
+
+        {%- if Values.factorioServer.isPublic %}
+        - name: FACTORIO_USER_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.factorio__fullname() }}
+              key: factorio-username
+        - name: FACTORIO_USER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.factorio__fullname() }}
+              key: factorio-password
+        {%- endif %}
+
+        {%- if Values.factorioServer.rcon.enabled %}
+        - name: FACTORIO_RCON_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.factorio__fullname() }}
+              key: rcon-password
+        {%- endif %}
+
+        ports:
+        - name: factorio
+          containerPort: 34197
+          protocol: UDP
+        {%- if Values.factorioServer.rcon.enabled %}
+        - name: rcon
+          containerPort: {{ Values.factorioServer.rcon.port }}
+          protocol: TCP
+        {%- endif %}
+        volumeMounts:
+        - name: saves
+          mountPath: /opt/factorio/saves
+        - name: mods
+          mountPath: /opt/factorio/mods
+      volumes:
+      - name: saves
+      {%- if Values.persistence.savedGames.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.factorio__fullname() }}-savedgames
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: mods
+      {%- if Values.persistence.mods.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.factorio__fullname() }}-mods
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}

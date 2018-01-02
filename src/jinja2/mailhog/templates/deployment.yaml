@@ -1,0 +1,70 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.mailhog__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.mailhog__fullname() }}
+spec:
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.mailhog__name() }}
+        release: {{ Release.Name }}
+    spec:
+      containers:
+        - name: {{ self.mailhog__name() }}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          env:
+            - name: MH_HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          {%- if Values.auth.enabled %}
+            - name: MH_AUTH_FILE
+              value: /authdir/{{ Values.auth.fileName }}
+          {%- endif %}
+          {%- for key, value in Values.env.iteritems() %}
+            - name: "{{ key }}"
+              value: "{{ value }}"
+          {%- endfor %}
+          ports:
+            - name: http
+              containerPort: 8025
+              protocol: TCP
+            - name: smtp
+              containerPort: 1025
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: smtp
+            initialDelaySeconds: 10
+            timeoutSeconds: 1
+          readinessProbe:
+            tcpSocket:
+              port: smtp
+          {%- if Values.auth.enabled %}
+          volumeMounts:
+            - name: authdir
+              mountPath: /authdir
+              readOnly: true
+          {%- endif %}
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.auth.enabled %}
+      volumes:
+        - name: authdir
+          secret:
+            secretName: {{ self.mailhog__authFileSecret() }}
+    {%- endif %}

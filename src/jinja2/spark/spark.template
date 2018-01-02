@@ -1,0 +1,162 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.master-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  ports:
+    - port: {{ Values.Master.ServicePort }}
+      targetPort: {{ Values.Master.ContainerPort }}
+  selector:
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.webui-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  ports:
+    - port: {{ Values.WebUi.ServicePort }}
+      targetPort: {{ Values.WebUi.ContainerPort }}
+  selector:
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  type: "LoadBalancer"
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.master-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  replicas: {{ Values.Master.Replicas | default(1, true) }}
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  template:
+    metadata:
+      labels:
+        heritage: {{ Release.Service | quote() }}
+        release: {{ Release.Name | quote() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+    spec:
+      containers:
+        - name: {{ self.master-fullname() }}
+          image: "{{ Values.Master.Image }}:{{ Values.Master.ImageTag }}"
+          command: ["/bin/sh","-c"]
+          args: ["echo $(hostname -i) {{ self.master-fullname() }} >> /etc/hosts; /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --ip {{ self.master-fullname() }} --port {{ Values.Master.ServicePort }} --webui-port {{ Values.WebUi.ContainerPort }}"]
+          ports:
+            - containerPort: {{ Values.Master.ContainerPort }}
+            - containerPort: {{ Values.WebUi.ContainerPort }}
+          resources:
+            requests:
+              cpu: "{{ Values.Master.Cpu }}"
+              memory: "{{ Values.Master.Memory }}"
+          env:
+          - name: SPARK_DAEMON_MEMORY
+            value: {{ Values.Master.DaemonMemory | default("1g", true) | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.zeppelin-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Zeppelin.Component }}"
+spec:
+  ports:
+    - port: {{ Values.Zeppelin.ServicePort }}
+      targetPort: {{ Values.Zeppelin.ContainerPort }}
+  selector:
+    component: "{{ Release.Name }}-{{ Values.Zeppelin.Component }}"
+  type: "LoadBalancer"
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.zeppelin-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Zeppelin.Component }}"
+spec:
+  replicas: {{ Values.Zeppelin.Replicas | default(1, true) }}
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      component: "{{ Release.Name }}-{{ Values.Zeppelin.Component }}"
+  template:
+    metadata:
+      labels:
+        heritage: {{ Release.Service | quote() }}
+        release: {{ Release.Name | quote() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        component: "{{ Release.Name }}-{{ Values.Zeppelin.Component }}"
+    spec:
+      containers:
+        - name: {{ self.zeppelin-fullname() }}
+          image: "{{ Values.Zeppelin.Image }}:{{ Values.Zeppelin.ImageTag }}"
+          command: ["/bin/sh","-c"]
+          args: ["sed -i.bak s/spark-master:7077/{{ self.master-fullname() }}:{{ Values.Master.ServicePort }}/g /opt/zeppelin/conf/zeppelin-env.sh; /opt/zeppelin/bin/docker-zeppelin.sh"]
+          ports:
+            - containerPort: {{ Values.Zeppelin.ContainerPort }}
+          resources:
+            requests:
+              cpu: "{{ Values.Zeppelin.Cpu }}"
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.worker-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Worker.Component }}"
+spec:
+  replicas: {{ Values.Worker.Replicas | default(1, true) }}
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      component: "{{ Release.Name }}-{{ Values.Worker.Component }}"
+  template:
+    metadata:
+      labels:
+        heritage: {{ Release.Service | quote() }}
+        release: {{ Release.Name | quote() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        component: "{{ Release.Name }}-{{ Values.Worker.Component }}"
+    spec:
+      containers:
+        - name: {{ self.worker-fullname() }}
+          image: "{{ Values.Worker.Image }}:{{ Values.Worker.ImageTag }}"
+          command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://{{ self.master-fullname() }}:{{ Values.Master.ServicePort }}", "--webui-port", "{{ Values.Worker.ContainerPort }}"]
+          ports:
+            - containerPort: {{ Values.Worker.ContainerPort }}
+          resources:
+            requests:
+              cpu: "{{ Values.Worker.Cpu }}"
+              memory: "{{ Values.Worker.Memory }}"
+          env:
+          - name: SPARK_DAEMON_MEMORY
+            value: {{ Values.Worker.DaemonMemory | default("1g", true) | quote() }}
+          - name: SPARK_WORKER_MEMORY
+            value: {{ Values.Worker.ExecutorMemory | default("1g", true) | quote() }}

@@ -1,0 +1,125 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - get
+  - delete
+- apiGroups:
+  - extensions
+  resources:
+  - ingresses
+  verbs:
+  - get
+  - update
+  - create
+  - list
+  - patch
+  - delete
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  - secrets
+  verbs:
+  - get
+  - create
+  - update
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+{%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.name() }}
+        release: {{ Release.Name }}
+    spec:
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      containers:
+        - name: {{ self.name() }}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          env:
+            - name: LEGO_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: LEGO_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          # {{ required "config.LEGO_EMAIL is a required field" Values.config.LEGO_EMAIL }}
+          {%- for key, value in Values.config.iteritems() %}
+            - name: "{{ key }}"
+              value: "{{ value }}"
+          {%- endfor %}
+          ports:
+            - containerPort: {{ Values.config.LEGO_PORT }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ Values.config.LEGO_PORT }}
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}

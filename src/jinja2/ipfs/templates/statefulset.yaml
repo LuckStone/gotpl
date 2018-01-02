@@ -1,0 +1,68 @@
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: {{ self.ipfs__fullname() }}
+  labels:
+    app: {{ self.ipfs__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  serviceName: {{ self.ipfs__servicename() }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.ipfs__name() }}
+        chart: {{ Chart.Name }}-{{ Chart.Version }}
+        heritage: {{ Release.Service }}
+        release: {{ Release.Name }}
+    spec:
+      securityContext:
+        # The image runs as uid 1000 by default, and needs to be able to write to
+        # the persistent volume to be able to start.
+        fsGroup: 1000
+        runAsUser: 1000
+      containers:
+      - name: {{ Chart.Name }}
+        image: {{ Values.image }}
+        ports:
+        - containerPort: 5001
+          name: api
+        - containerPort: 8080
+          name: gateway
+        volumeMounts:
+          - name: ipfs-storage
+            mountPath: /data/ipfs
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+
+  {%- if Values.persistence.enabled %}
+  volumeClaimTemplates:
+    - metadata:
+        name: ipfs-storage
+        {%- if Values.persistence.annotations %}
+        {%- for key, value in Values.persistence.annotations.iteritems() %}
+          {{ key }}: {{ value }}
+        {%- endfor %}
+        {%- endif %}
+      spec:
+        accessModes:
+          {%- for item in Values.persistence.accessModes %}
+          - {{ item | quote() }}
+          {%- endfor %}
+        resources:
+          requests:
+            storage: {{ Values.persistence.size | quote() }}
+      {%- if Values.persistence.storageClass %}
+      {%- if ("-"==Values.persistence.storageClass) %}
+        storageClassName: ""
+      {%- else %}
+        storageClassName: "{{ Values.persistence.storageClass }}"
+      {%- endif %}
+      {%- endif %}
+  {%- else %}
+      volumes:
+        - name: ipfs-storage
+          emptyDir: {}
+  {%- endif %}

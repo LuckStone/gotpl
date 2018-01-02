@@ -1,0 +1,27 @@
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: spartakus
+    chart: spartakus-1.1.1
+    heritage: spartakus
+    release: test
+  name: test-spartakus
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: spartakus
+        release: test
+    spec:
+      containers:
+        - name: spartakus
+          image: "gcr.io/google_containers/spartakus-amd64:v1.0.0"
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - volunteer
+            - --cluster-id=""
+          resources:
+            {}

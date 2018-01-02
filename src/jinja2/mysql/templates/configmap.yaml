@@ -1,0 +1,11 @@
+{%- if Values.configurationFiles %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.mysql__fullname() }}
+data:
+{%- for key, val in Values.configurationFiles.iteritems() %}
+  {{ key }}: |-
+{{ val | indent(4) }}
+{%- endfor %}
+{%- endif -%}

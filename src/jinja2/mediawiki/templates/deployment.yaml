@@ -1,0 +1,91 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.mediawiki__fullname() }}
+  labels:
+    app: {{ self.mediawiki__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.mediawiki__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.mediawiki__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.mediawiki__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mediawiki__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: MEDIAWIKI_USERNAME
+          value: {{ Values.mediawikiUser | default("", true) | quote() }}
+        - name: MEDIAWIKI_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mediawiki__fullname() }}
+              key: mediawiki-password
+        - name: MEDIAWIKI_EMAIL
+          value: {{ Values.mediawikiEmail | default("", true) | quote() }}
+        - name: MEDIAWIKI_WIKI_NAME
+          value: {{ Values.mediawikiName | default("", true) | quote() }}
+        - name: SMTP_HOST_ID
+          value: {{ Values.smtpHostID | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mediawiki__fullname() }}
+              key: smtp-password
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 30
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: mediawiki-data
+          mountPath: /bitnami/mediawiki
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: mediawiki-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.mediawiki__fullname() }}-mediawiki
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.mediawiki__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}

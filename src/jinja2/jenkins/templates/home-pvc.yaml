@@ -1,0 +1,24 @@
+{%- if Values.Persistence.Enabled and ( not  Values.Persistence.ExistingClaim) -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.jenkins__fullname() }}
+  labels:
+    app: {{ self.jenkins__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.Persistence.AccessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.Persistence.Size | quote() }}
+{%- if Values.Persistence.StorageClass %}
+{%- if ("-"==Values.Persistence.StorageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.Persistence.StorageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}

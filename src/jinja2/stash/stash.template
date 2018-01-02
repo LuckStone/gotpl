@@ -1,0 +1,158 @@
+{%- if Values.rbac.install %}
+{%- set serviceName =  self.fullname() -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ serviceName }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+subjects:
+- kind: ServiceAccount
+  name: {{ serviceName }}
+  namespace: {{ Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ serviceName }}
+{%- endif %}
+#---{%- if Values.rbac.install %}
+{%- set serviceName =  self.fullname() -%}
+apiVersion: rbac.authorization.k8s.io/{{ required "A valid Values.rbac.apiVersion entry required!" Values.rbac.apiVersion }}
+kind: ClusterRole
+metadata:
+  name: {{ serviceName }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+rules:
+- apiGroups:
+  - extensions
+  resources:
+  - thirdpartyresources
+  verbs: ["get", "create"]
+- apiGroups:
+  - stash.appscode.com
+  resources:
+  - restics
+  verbs: ["*"]
+- apiGroups:
+  - extensions
+  resources:
+  - deployments
+  - replicasets
+  - daemonsets
+  verbs: ["list", "watch", "update"]
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs: ["list", "watch", "update"]
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - replicationcontrollers
+  verbs: ["list", "watch", "update"]
+- apiGroups: [""]
+  resources:
+  - secrets
+  verbs: ["get"]
+- apiGroups: [""]
+  resources:
+  - events
+  verbs: ["create"]
+- apiGroups: [""]
+  resources:
+  - pods
+  verbs: ["list", delete"]
+{%- endif %}
+#---{%- if Values.rbac.install %}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: "{{ self.name() }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  ports:
+  - name: pushgateway
+    port: 56789
+    protocol: TCP
+    targetPort: pushgateway
+  - name: http
+    port: 56790
+    protocol: TCP
+    targetPort: http
+  selector:
+    app: "{{ self.name() }}"
+    release: "{{ Release.Name }}"
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: "{{ self.name() }}"
+        release: "{{ Release.Name }}"
+    spec:
+{%- if Values.rbac.install %}
+      serviceAccountName: {{ self.fullname() }}
+{%- endif %}
+      containers:
+      - args:
+        - run
+        - --v=3
+        image: '{{ Values.operator.image }}:{{ Values.operator.tag }}'
+        imagePullPolicy: '{{ Values.operator.pullPolicy }}'
+        name: operator
+        ports:
+        - containerPort: 56790
+          name: http
+          protocol: TCP
+        terminationMessagePolicy: File
+      - args:
+        - -web.listen-address=:56789
+        - -persistence.file=/var/pv/pushgateway.dat
+        image: '{{ Values.pushgateway.image }}:{{ Values.pushgateway.tag }}'
+        imagePullPolicy: '{{ Values.pushgateway.pullPolicy }}'
+        name: pushgateway
+        ports:
+        - containerPort: 56789
+          name: pushgateway
+          protocol: TCP
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/pv
+          name: data-volume
+        - mountPath: /tmp
+          name: stash-scratchdir
+      volumes:
+        - emptyDir: {}
+          name: data-volume
+        - emptyDir: {}
+          name: stash-scratchdir

@@ -1,0 +1,92 @@
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: {{ self.hadoop__fullname() }}-yarn-nm
+  annotations:
+    checksum/config: ""
+  labels:
+    app: {{ self.hadoop__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+    component: yarn-nm
+spec:
+  serviceName: {{ self.hadoop__fullname() }}-yarn-nm
+  replicas: {{ Values.yarn.nodeManager.replicas }}
+{%- if Values.yarn.nodeManager.parallelCreate %}
+  podManagementPolicy: Parallel
+{%- endif %}
+  template:
+    metadata:
+      labels:
+        app: {{ self.hadoop__name() }}
+        release: {{ Release.Name }}
+        component: yarn-nm
+    spec:
+      affinity:
+        podAntiAffinity:
+        {%- if Values.antiAffinity=="hard" %}
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - topologyKey: "kubernetes.io/hostname"
+            labelSelector:
+              matchLabels:
+                app:  {{ self.hadoop__name() }}
+                release: {{ Release.Name | quote() }}
+                component: yarn-nm
+        {%- elif Values.antiAffinity=="soft" %}
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 5
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app:  {{ self.hadoop__name() }}
+                  release: {{ Release.Name | quote() }}
+                  component: yarn-nm
+        {%- endif %}
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: yarn-nm
+        image: {{ Values.image }}
+        imagePullPolicy: {{ Values.imagePullPolicy }}
+        ports:
+        - containerPort: 8088
+          name: web
+        command:
+           - "/bin/bash"
+           - "/tmp/hadoop-config/bootstrap.sh"
+           - "-d"
+        resources:
+{{ toYaml(Values.yarn.nodeManager.resources) | indent(10) }}
+        readinessProbe:
+          httpGet:
+            path: /node
+            port: 8042
+          initialDelaySeconds: 10
+          timeoutSeconds: 2
+        livenessProbe:
+          httpGet:
+            path: /node
+            port: 8042
+          initialDelaySeconds: 10
+          timeoutSeconds: 2
+        env:
+        - name: MY_CPU_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: yarn-nm
+              resource: limits.cpu
+              divisor: 1
+        - name: MY_MEM_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: yarn-nm
+              resource: limits.memory
+              divisor: 1M
+        volumeMounts:
+        - name: hadoop-config
+          mountPath: /tmp/hadoop-config
+      volumes:
+      - name: hadoop-config
+        configMap:
+          name: {{ self.hadoop__fullname() }}

@@ -1,0 +1,81 @@
+
+
+
+
+---
+
+
+
+
+---
+
+
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-g2
+  labels:
+    app: "g2"
+    chart: "g2-0.2.0"
+    release: "test"
+    heritage: "g2"
+spec:
+  ports:
+  - name: http
+    port: 4730
+    protocol: TCP
+    targetPort: http
+  - name: restapi
+    port: 3000
+    protocol: TCP
+    targetPort: restapi
+  selector:
+    app: "g2"
+    release: "test"
+  type: 'ClusterIP'
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-g2
+  labels:
+    chart: "g2-0.2.0"
+    app: "g2"
+    heritage: "g2"
+    release: "test"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: "g2"
+        release: "test"
+    spec:
+      containers:
+      - args:
+        - run
+        - --storage-dir=/var/db
+        - --v=5
+        image: 'appscode/gearmand:0.5.0'
+        imagePullPolicy: 'IfNotPresent'
+        name: gearman-server
+        ports:
+        - containerPort: 4730
+          name: http
+          protocol: TCP
+        - containerPort: 3000
+          name: restapi
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /var/db
+          name: data-volume
+      volumes:
+      - emptyDir: {}
+        name: data-volume

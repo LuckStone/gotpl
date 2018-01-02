@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.concourse__concourse__fullname() }}
+  labels:
+    app: {{ self.concourse__concourse__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+data:
+  postgresql-host: {{ self.concourse__postgresql__fullname() }}
+  postgresql-database: {{ Values.postgresql.postgresDatabase | quote() }}
+  concourse-atc-port: {{ Values.concourse.atcPort | quote() }}
+  concourse-tsa-host: {{ self.concourse__web__fullname() }}
+  concourse-tsa-port: {{ Values.concourse.tsaPort | quote() }}
+  concourse-allow-self-signed-certificates: {{ Values.concourse.allowSelfSignedCertificates | quote() }}
+  concourse-auth-duration: {{ Values.concourse.authDuration | quote() }}
+  concourse-resource-checking-interval: {{ Values.concourse.resourceCheckingInterval | quote() }}
+  concourse-old-resource-grace-period: {{ Values.concourse.oldResourceGracePeriod | quote() }}
+  concourse-resource-cache-cleanup-interval: {{ Values.concourse.resourceCacheCleanupInterval | quote() }}
+  concourse-external-url: {{ Values.concourse.externalURL | default("", true) | quote() }}
+  concourse-baggageclaim-driver: {{ Values.concourse.baggageclaimDriver | quote() }}
+  garden-docker-registry: {{ Values.concourse.dockerRegistry | default("", true) | quote() }}
+  garden-insecure-docker-registry: {{ Values.concourse.insecureDockerRegistry | default("", true) | quote() }}
+  github-auth-organization: {{ Values.concourse.githubAuthOrganization | default("", true) | quote() }}
+  github-auth-team: {{ Values.concourse.githubAuthTeam | default("", true) | quote() }}
+  github-auth-user: {{ Values.concourse.githubAuthUser | default("", true) | quote() }}
+  github-auth-auth-url: {{ Values.concourse.githubAuthAuthUrl | default("", true) | quote() }}
+  github-auth-token-url: {{ Values.concourse.githubAuthTokenUrl | default("", true) | quote() }}
+  github-auth-api-url: {{ Values.concourse.githubAuthApiUrl | default("", true) | quote() }}
+  gitlab-auth-group: {{ Values.concourse.gitlabAuthGroup | default("", true) | quote() }}
+  gitlab-auth-auth-url: {{ Values.concourse.gitlabAuthAuthUrl | default("", true) | quote() }}
+  gitlab-auth-token-url: {{ Values.concourse.gitlabAuthTokenUrl | default("", true) | quote() }}
+  gitlab-auth-api-url: {{ Values.concourse.gitlabAuthApiUrl | default("", true) | quote() }}
+  generic-oauth-display-name: {{ Values.concourse.genericOauthDisplayName | default("", true) | quote() }}
+  generic-oauth-auth-url: {{ Values.concourse.genericOauthAuthUrl | default("", true) | quote() }}
+  generic-oauth-auth-url-param: {{ Values.concourse.genericOauthAuthUrlParam | default("", true) | quote() }}
+  generic-oauth-scope: {{ Values.concourse.genericOauthScope | default("", true) | quote() }}
+  generic-oauth-token-url: {{ Values.concourse.genericOauthTokenUrl | default("", true) | quote() }}
+  worker-post-stop-delay-seconds: {{ Values.worker.postStopDelaySeconds | quote() }}
+  worker-fatal-errors: {{ Values.worker.fatalErrors | default("", true) | quote() }}
+  

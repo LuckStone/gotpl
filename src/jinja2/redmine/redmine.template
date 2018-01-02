@@ -1,0 +1,175 @@
+{%- if Values.ingress.enabled %}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+{%- if Values.ingress.annotations %}
+  annotations:
+{{ toYaml(Values.ingress.annotations) | indent(4) }}
+{%- endif %}
+  name: {{ self.redmine__fullname() }}
+spec:
+  rules:
+  - host: {{ Values.ingress.hostname | quote() }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: {{ self.redmine__fullname() }}
+          servicePort: 80
+{%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+{%- endif -%}
+{%- endif %}
+#---{%- if Values.persistence.enabled and ( not  Values.persistence.existingClaim) %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.redmine__fullname() }}
+  labels:
+    app: {{ self.redmine__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.redmine__fullname() }}
+  labels:
+    app: {{ self.redmine__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.redminePassword %}
+  redmine-password: {{ Values.redminePassword | default("", true) | b64enc() | quote() }}
+  {%- else %}
+  redmine-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  smtp-password: {{ Values.smtpPassword | default("", true) | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.redmine__fullname() }}
+  labels:
+    app: {{ self.redmine__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  selector:
+    app: {{ self.redmine__fullname() }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerSourceRanges: {{ Values.serviceLoadBalancerSourceRanges }}
+  {%- endif %}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.redmine__fullname() }}
+  labels:
+    app: {{ self.redmine__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.redmine__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.redmine__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        {%- if Values.extraVars %}
+{{ toYaml(Values.extraVars) | indent(8) }}
+        {%- endif %}
+        {%- if Values.databaseType.postgresql %}
+        - name: REDMINE_DB_POSTGRES
+          value: {{ self.redmine__postgresql__fullname() }}
+        - name: REDMINE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__postgresql__fullname() }}
+              key: postgres-password
+        {%- else %}
+        - name: REDMINE_DB_MYSQL
+          value: {{ self.redmine__mariadb__fullname() }}
+        - name: REDMINE_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__mariadb__fullname() }}
+              key: mariadb-root-password
+        {%- endif %}
+        - name: REDMINE_USERNAME
+          value: {{ Values.redmineUsername | default("", true) | quote() }}
+        - name: REDMINE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__fullname() }}
+              key: redmine-password
+        - name: REDMINE_EMAIL
+          value: {{ Values.redmineEmail | default("", true) | quote() }}
+        - name: REDMINE_LANG
+          value: {{ Values.redmineLanguage | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.redmine__fullname() }}
+              key: smtp-password
+        - name: SMTP_TLS
+          value: {{ Values.smtpTls | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        volumeMounts:
+        - name: redmine-data
+          mountPath: /bitnami/redmine
+      volumes:
+      - name: redmine-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.persistence.existingClaim | default  (self.redmine__fullname()) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

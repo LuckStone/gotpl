@@ -1,0 +1,80 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.percona__fullname() }}
+  labels:
+    app: {{ self.percona__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.percona__fullname() }}
+    spec:
+      initContainers:
+      - name: "remove-lost-found"
+        image: "busybox:1.25.0" 
+        imagePullPolicy: {{ Values.imagePullPolicy | quote() }}
+        command: 
+        - "rm"
+        - "-fr"
+        - "/var/lib/mysql/lost+found"
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+      containers:
+      - name: {{ self.percona__fullname() }}
+        image: "mysql:{{ Values.imageTag }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | quote() }}
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        env:
+        {%- if Values.mysqlAllowEmptyPassword %}
+        - name: MYSQL_ALLOW_EMPTY_PASSWORD
+          value: "true"
+        {%- else %}
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.percona__fullname() }}
+              key: mysql-root-password
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.percona__fullname() }}
+              key: mysql-password
+        {%- endif %}
+        - name: MYSQL_USER
+          value: {{ Values.mysqlUser | default("", true) | quote() }}
+        - name: MYSQL_DATABASE
+          value: {{ Values.mysqlDatabase | default("", true) | quote() }}
+        ports:
+        - name: mysql
+          containerPort: 3306
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.percona__fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

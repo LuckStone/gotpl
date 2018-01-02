@@ -1,0 +1,32 @@
+{%- if (length(Values.single.config.outputs.influxdb.urls))>0 %}
+{%- if Values.single.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}-s
+  labels:
+    app: {{ self.fullname() }}-s
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}-s
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image.repo }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy | default("", true) | quote() }}
+        resources:
+{{ toYaml(Values.single.resources) | indent(10) }}
+        volumeMounts:
+        - name: config
+          mountPath: /etc/telegraf
+      volumes:
+      - name: config
+        configMap:
+          name: {{ self.fullname() }}-s
+{%- endif -%}
+{%- endif -%}

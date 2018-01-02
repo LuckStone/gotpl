@@ -1,0 +1,102 @@
+{%- if self.opencart__host() -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.opencart__fullname() }}
+  labels:
+    app: {{ self.opencart__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.opencart__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.opencart__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MARIADB_HOST
+          value: {{ self.opencart__mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.opencart__mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: OPENCART_HOST
+          value: {{ self.opencart__host()  | quote() }}
+        - name: OPENCART_USERNAME
+          value: {{ Values.opencartUsername | default("", true) | quote() }}
+        - name: OPENCART_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.opencart__fullname() }}
+              key: opencart-password
+        - name: OPENCART_EMAIL
+          value: {{ Values.opencartEmail | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.opencart__fullname() }}
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /admin/
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.opencart__host()  | quote() }}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /admin/
+            port: http
+            httpHeaders:
+            - name: Host
+              value: {{ self.opencart__host()  | quote() }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: opencart-data
+          mountPath: /bitnami/opencart
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: opencart-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.opencart__fullname() }}-opencart
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: apache-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.opencart__fullname() }}-apache
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- endif -%}

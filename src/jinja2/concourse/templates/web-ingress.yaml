@@ -1,0 +1,32 @@
+{%- if Values.web.ingress.enabled -%}
+{%- set releaseName = Release.Name -%}
+{%- set serviceName = Values.web.nameOverride | default("web", true) -%}
+{%- set servicePort = Values.concourse.atcPort -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.concourse__web__fullname() }}
+  labels:
+    app: {{ self.concourse__web__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+    {%- for key, value in Values.web.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+    {%- endfor %}
+spec:
+  rules:
+    {%- for host in Values.web.ingress.hosts %}
+    - host: {{ host }}
+      http:
+        paths:
+          - backend:
+              serviceName: {{ "%s-%s" | format(releaseName,serviceName) | trunc(63) | trimSuffix("-") }}
+              servicePort: {{ servicePort }}
+    {%- endfor -%}
+  {%- if Values.web.ingress.tls %}
+  tls:
+{{ toYaml(Values.web.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}

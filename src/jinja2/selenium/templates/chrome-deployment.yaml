@@ -1,0 +1,88 @@
+{%- if true==Values.chrome.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.selenium__chrome__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.chrome.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.selenium__chrome__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+      annotations: 
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.chrome.image }}:{{ Values.chrome.tag }}"
+          imagePullPolicy: {{ Values.chrome.pullPolicy }}
+          ports:
+            {%- if Values.hub.jmxPort %}
+            - containerPort: {{ Values.hub.jmxPort }}
+              name: jmx
+              protocol: TCP
+            {%- endif %}
+          env:
+            - name: HUB_PORT_4444_TCP_ADDR
+              value: {{ self.selenium__hub__fullname() }}
+            - name: HUB_PORT_4444_TCP_PORT
+              value: {{ Values.hub.port | quote() }}
+            - name: JAVA_OPTS
+              value: {{ Values.chrome.javaOpts | default("", true) | quote() }}
+            - name: SE_OPTS
+              value: {{ Values.chrome.seOpts | default("", true) | quote() }}
+            {%- if Values.chrome.chromeVersion %}
+            - name: CHROME_VERSION
+              value: {{ Values.chrome.chromeVersion | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodeMaxInstances %}
+            - name: NODE_MAX_INSTANCES
+              value: {{ Values.chrome.nodeMaxInstances | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodeMaxSession %}
+            - name: NODE_MAX_SESSION
+              value: {{ Values.chrome.nodeMaxSession | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodeRegisterCycle %}
+            - name: NODE_REGISTER_CYCLE
+              value: {{ Values.chrome.nodeRegisterCycle | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.nodePort %}
+            - name: NODE_PORT
+              value: {{ Values.chrome.nodePort | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.screenWidth %}
+            - name: SCREEN_WIDTH
+              value: {{ Values.chrome.screenWidth | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.screenHeight %}
+            - name: SCREEN_HEIGHT
+              value: {{ Values.chrome.screenHeight | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.screenDepth %}
+            - name: SCREEN_DEPTH
+              value: {{ Values.chrome.screenDepth | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.display %}
+            - name: DISPLAY
+              value: {{ Values.chrome.display | quote() }}
+            {%- endif %}
+            {%- if Values.chrome.timeZone %}
+            - name: TZ
+              value: {{ Values.chrome.timeZone | quote() }}
+            {%- endif %}
+          volumeMounts:
+{%- if Values.chrome.volumeMounts -%}
+{{ toYaml(Values.chrome.volumeMounts) | indent(12) }}
+{%- endif %}
+          resources:
+{{ toYaml(Values.chrome.resources) | indent(12) }}
+      volumes:
+{%- if Values.chrome.volumes -%}
+{{ toYaml(Values.chrome.volumes) | indent(8) }}
+{%- endif -%}
+{%- endif -%}

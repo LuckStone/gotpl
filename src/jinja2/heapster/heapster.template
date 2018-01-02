@@ -1,0 +1,169 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ self.heapster__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.heapster__fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:heapster
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.heapster__fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.resizer.enabled -%}
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: {{ self.heapster__fullname() }}-pod-nanny
+  labels:
+    app: {{ self.heapster__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ self.heapster__fullname() }}-pod-nanny
+subjects:
+- kind: ServiceAccount
+  name: {{ self.heapster__fullname() }}
+  namespace: {{ Release.Namespace }}
+{%- endif -%}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+{%- if Values.resizer.enabled -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: Role
+metadata:
+  name: {{ self.heapster__fullname() }}-pod-nanny
+  labels:
+    app: {{ self.heapster__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+- apiGroups:
+  - "extensions"
+  resources:
+  - deployments
+  verbs:
+  - get
+  - update
+{%- endif -%}
+{%- endif -%}
+#---{%- if Values.rbac.create -%}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: {{ self.heapster__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.heapster__fullname() }}
+{%- endif -%}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.heapster__service__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: {{ self.heapster__fullname() }}
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  {%- if Values.service.labels -%}
+    {%- for key, value in Values.service.labels.iteritems() %}
+    {{ key }}: {{ value }}
+    {%- endfor %}
+  {%- endif %}
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - port: {{ Values.service.externalPort }}
+    targetPort: {{ Values.service.internalPort }}
+    protocol: TCP
+  selector:
+    app: {{ self.heapster__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.heapster__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+  {%- if Values.labels -%}    
+    {%- for key, value in Values.labels.iteritems() %}
+    {{ key }}: {{ value }}
+    {%- endfor %}
+  {%- endif %}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.heapster__fullname() }}
+    spec:
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.heapster__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+{%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+{%- endif %}
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ Values.service.internalPort }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ Values.service.internalPort }}
+          initialDelaySeconds: 180
+          timeoutSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}
+      {%- if Values.env %}
+        env:
+{{ toYaml(Values.env) | indent(10) }}
+      {%- endif %}
+        command:
+          {%- for item in Values.command %}
+          - {{ item | quote() }}
+          {%- endfor %}
+{%- if Values.resizer.enabled %}
+      - name: {{ Chart.Name }}-nanny
+        {%- set item = Values.resizer %}
+        image: "{{ item.image.repository }}:{{ item.image.tag }}"
+        imagePullPolicy: {{ item.image.pullPolicy }}
+        resources:
+{{ toYaml(item.resources) | indent(12) }}
+        env:
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+        command:
+          - "/pod_nanny"
+          - "--deployment={{ self.heapster__fullname() }}"
+          - "--container={{ Chart.Name }}"
+          {%- for item in Values.resizer.flags %}
+          - {{ item | quote() }}
+          {%- endfor %}
+{%- endif -%}

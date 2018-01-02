@@ -1,0 +1,163 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-testlink-apache
+  labels:
+    app: test-testlink
+    chart: "testlink-0.4.15"
+    release: "test"
+    heritage: "testlink"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-testlink-testlink
+  labels:
+    app: test-testlink
+    chart: "testlink-0.4.15"
+    release: "test"
+    heritage: "testlink"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-testlink
+  labels:
+    app: test-testlink
+    chart: "testlink-0.4.15"
+    release: "test"
+    heritage: "testlink"
+type: Opaque
+data:
+  testlink-password: "Cm9vcW9nYWRvbnIK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-testlink
+  labels:
+    app: test-testlink
+    chart: "testlink-0.4.15"
+    release: "test"
+    heritage: "testlink"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: test-testlink
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-testlink
+  labels:
+    app: test-testlink
+    chart: "testlink-0.4.15"
+    release: "test"
+    heritage: "testlink"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-testlink
+    spec:
+      containers:
+      - name: test-testlink
+        image: "bitnami/testlink:1.9.16-r8"
+        imagePullPolicy: ""
+        env:
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: TESTLINK_USERNAME
+          value: "user"
+        - name: TESTLINK_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-testlink
+              key: testlink-password
+        - name: TESTLINK_EMAIL
+          value: "user@example.com"
+        - name: TESTLINK_LANGUAGE
+          value: "en_US"
+        - name: SMTP_ENABLE
+          value: ""
+        - name: SMTP_CONNECTION_MODE
+          value: ""
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-testlink
+              key: smtp-password
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /login.php
+            port: http
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /login.php
+            port: http
+          initialDelaySeconds: 30
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: testlink-data
+          mountPath: /bitnami/testlink
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: testlink-data
+        persistentVolumeClaim:
+          claimName: test-testlink-testlink
+      - name: apache-data
+        persistentVolumeClaim:
+          claimName: test-testlink-apache

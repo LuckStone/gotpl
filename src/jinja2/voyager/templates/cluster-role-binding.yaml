@@ -1,0 +1,19 @@
+{%- if Values.rbac.create %}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.fullname() }}
+subjects:
+- kind: ServiceAccount
+  name: {{ self.fullname() }}
+  namespace: {{ Release.Namespace }}
+{%- endif %}

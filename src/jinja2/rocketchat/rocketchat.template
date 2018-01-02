@@ -1,0 +1,160 @@
+{%- if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.rocketchat__fullname() }}
+  labels:
+    app: {{ self.rocketchat__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+{{ toYaml(Values.ingress.annotations) | indent(4) }}
+{%- if Values.ingress.tls %}
+    kubernetes.io/tls-acme: "true"
+{%- endif %}
+spec:
+{%- if Values.ingress.tls %}
+  tls:
+  - hosts:
+    - {{ Values.host }}
+    secretName: {{ self.rocketchat__fullname() }}-tls
+{%- endif %}
+  rules:
+  - host: {{ Values.host }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: {{ self.rocketchat__fullname() }}
+          servicePort: 3000
+{%- endif -%}
+#---{%- if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.rocketchat__fullname() }}
+  labels:
+    app: {{ self.rocketchat__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif -%}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.rocketchat__fullname() }}
+  labels:
+    app: {{ self.rocketchat__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  mail-url: {{ "smtp://%s:%s@%s:%s" | format(Values.config.SMTP_Username,Values.config.SMTP_Password,Values.config.SMTP_Host,Values.config.SMTP_Port) | b64enc() | quote() }}
+  {%- if Values.mongodb.mongodbUsername %}
+  mongo-uri: {{ "mongodb://%s:%s@%s-mongodb:27017/%s" | format(Values.mongodb.mongodbUsername,Values.mongodb.mongodbPassword,Release.Name,Values.mongodb.mongodbDatabase) | b64enc() | quote() }}
+  {%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.rocketchat__fullname() }}
+  labels:
+    app: {{ self.rocketchat__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  ports:
+  - name: http
+    port: 3000
+    targetPort: http
+  selector:
+    app: {{ self.rocketchat__name() }}
+    release: "{{ Release.Name }}"
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.rocketchat__fullname() }}
+  labels:
+    app: {{ self.rocketchat__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.rocketchat__name() }}
+        release: "{{ Release.Name }}"
+    spec:
+      containers:
+      - name: {{ self.rocketchat__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: DEPLOY_PLATFORM
+          value: helm-chart
+        - name: INSTANCE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: MONGO_URL
+        {%- if Values.mongodb.mongodbUsername %}
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.rocketchat__fullname() }}
+              key: mongo-uri
+        {%- else %}
+          value: mongodb://{{ self.rocketchat__mongodb__fullname() }}:27017/rocketchat
+        {%- endif %}
+        {%- if Values.host %}
+        - name: ROOT_URL
+          value: https://{{ Values.host }}
+        {%- endif %}
+        - name: MAIL_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.rocketchat__fullname() }}
+              key: mail-url
+        {%- for key, value in Values.config.iteritems() %}
+        - name: {{ key }}
+          value: {{ value | quote() }}
+        {%- endfor %}
+        ports:
+        - name: http
+          containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 20
+          timeoutSeconds: 5
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: rocket-data
+          mountPath: /app/uploads
+      volumes:
+      - name: rocket-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.rocketchat__fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+

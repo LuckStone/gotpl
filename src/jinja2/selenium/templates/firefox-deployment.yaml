@@ -1,0 +1,80 @@
+{%- if true==Values.firefox.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.selenium__firefox__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+spec:
+  replicas: {{ Values.firefox.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.selenium__firefox__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+      annotations: 
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.firefox.image }}:{{ Values.firefox.tag }}"
+          imagePullPolicy: {{ Values.firefox.pullPolicy }}
+          ports:
+            {%- if Values.hub.jmxPort %}
+            - containerPort: {{ Values.hub.jmxPort }}
+              name: jmx
+              protocol: TCP
+            {%- endif %}
+          env:
+            - name: HUB_PORT_4444_TCP_ADDR
+              value: {{ self.selenium__hub__fullname() }}
+            - name: HUB_PORT_4444_TCP_PORT
+              value: {{ Values.hub.port | quote() }}
+            - name: JAVA_OPTS
+              value: {{ Values.firefox.javaOpts | default("", true) | quote() }}
+            - name: SE_OPTS
+              value: {{ Values.firefox.seOpts | default("", true) | quote() }}
+            {%- if Values.firefox.firefoxVersion %}
+            - name: FIREFOX_VERSION
+              value: {{ Values.firefox.firefoxVersion | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodeMaxInstances %}
+            - name: NODE_MAX_INSTANCES
+              value: {{ Values.firefox.nodeMaxInstances | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodeMaxSession %}
+            - name: NODE_MAX_SESSION
+              value: {{ Values.firefox.nodeMaxSession | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodeRegisterCycle %}
+            - name: NODE_REGISTER_CYCLE
+              value: {{ Values.firefox.nodeRegisterCycle | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.nodePort %}
+            - name: NODE_PORT
+              value: {{ Values.firefox.nodePort | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.screenWidth %}
+            - name: SCREEN_WIDTH
+              value: {{ Values.firefox.screenWidth | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.screenHeight %}
+            - name: SCREEN_HEIGHT
+              value: {{ Values.firefox.screenHeight | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.screenDepth %}
+            - name: SCREEN_DEPTH
+              value: {{ Values.firefox.screenDepth | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.display %}
+            - name: DISPLAY
+              value: {{ Values.firefox.display | quote() }}
+            {%- endif %}
+            {%- if Values.firefox.timeZone %}
+            - name: TZ
+              value: {{ Values.firefox.timeZone | quote() }}
+            {%- endif %}
+          resources:
+{{ toYaml(Values.firefox.resources) | indent(12) }}
+{%- endif -%}

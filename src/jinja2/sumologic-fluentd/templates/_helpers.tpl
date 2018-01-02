@@ -1,0 +1,23 @@
+{# vim: set filetype=mustache: #}
+{#
+Expand the name of the chart.
+#}
+{%- block name -%}
+{{- Values.nameOverride | default(Chart.Name, true) | trunc(63) | trimSuffix("-") }}
+{%- endblock -%}
+
+{#
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+#}
+{%- block fullname -%}
+{%- set name = Values.nameOverride | default(Chart.Name, true) -%}
+{{- "%s-%s" | format(Release.Name,name) | trunc(63) | trimSuffix("-") }}
+{%- endblock -%}
+
+{#
+A uniquely named secret, which includes the install time
+#}
+{%- block fullname-secrets -%}
+{{- "%s-secrets-%d" | format((self.fullname() ))  Release.Time.Seconds -}}
+{%- endblock -%}

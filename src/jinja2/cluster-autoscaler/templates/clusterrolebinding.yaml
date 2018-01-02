@@ -1,0 +1,19 @@
+{%- if Values.rbac.create -%}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ self.cluster-autoscaler__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.cluster-autoscaler__fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.cluster-autoscaler__fullname() }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.cluster-autoscaler__fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}

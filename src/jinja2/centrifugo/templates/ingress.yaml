@@ -1,0 +1,32 @@
+{%- if Values.ingress.enabled -%}
+{%- set serviceName =  self.centrifugo__fullname() -%}
+{%- set servicePort = Values.service.port -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.centrifugo__fullname() }}
+  labels:
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    app: {{ self.centrifugo__name() }}
+  annotations:
+    {%- for key, value in Values.ingress.annotations.iteritems() %}
+      {{ key }}: {{ value | quote() }}
+    {%- endfor %}
+spec:
+  rules:
+    {%- for host in Values.ingress.hosts %}
+    - host: {{ host }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ serviceName }}
+              servicePort: {{ servicePort }}
+    {%- endfor -%}
+  {%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}

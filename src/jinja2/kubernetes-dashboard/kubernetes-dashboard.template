@@ -1,0 +1,132 @@
+{%- if Values.rbac.create %}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app: {{ self.kubernetes-dashboard__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.kubernetes-dashboard__fullname() }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: {{ self.kubernetes-dashboard__fullname() }}
+    namespace: {{ Release.Namespace }}
+{%- endif -%}
+#---{%- if Values.ingress.enabled -%}
+{%- set fullName =  self.kubernetes-dashboard__fullname() %}
+{%- set httpPort = Values.httpPort %}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+  {%- for key, value in Values.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  labels:
+    app: {{ self.kubernetes-dashboard__name() }}
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+  name: {{ self.kubernetes-dashboard__fullname() }}
+spec:
+  rules:
+  {%- for item in Values.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ fullName }}
+              servicePort: {{ httpPort }}
+  {%- endfor -%}
+  {%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}
+#---{%- if Values.rbac.create %}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app: {{ self.kubernetes-dashboard__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.kubernetes-dashboard__fullname() }}
+{%- endif -%}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.kubernetes-dashboard__fullname() }}
+  labels:
+    app: {{ self.kubernetes-dashboard__name() }}
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    kubernetes.io/cluster-service: "true"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - port: {{ Values.httpPort }}
+    targetPort: http
+{%- if .Values hasKey "nodePort" %}
+    nodePort: {{ Values.nodePort }}
+{%- endif %}
+  selector:
+    app: {{ self.kubernetes-dashboard__name() }}
+    release: {{ Release.Name | quote() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.kubernetes-dashboard__fullname() }}
+  labels:
+    app: {{ self.kubernetes-dashboard__name() }}
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    kubernetes.io/cluster-service: "true"
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ self.kubernetes-dashboard__name() }}
+        heritage: "{{ Release.Service }}"
+        release: "{{ Release.Name }}"
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        kubernetes.io/cluster-service: "true"
+    spec:
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.kubernetes-dashboard__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(10) }}
+      containers:
+      - name: main
+        image: "{{ Values.image }}:{{ Values.imageTag }}"
+        imagePullPolicy: {{ Values.imagePullPolicy }}
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: 9090
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 30
+        ports:
+        - name: http
+          containerPort: 9090
+          protocol: TCP

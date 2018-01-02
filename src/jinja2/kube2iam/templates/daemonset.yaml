@@ -1,0 +1,64 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  labels:
+    app: {{ self.kube2iam__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.kube2iam__fullname() }}
+spec:
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.kube2iam__name() }}
+        release: {{ Release.Name }}
+      {%- if Values.podLabels %}
+{{ toYaml(Values.podLabels) | indent(8) }}
+      {%- endif %}
+    spec:
+      containers:
+        - name: kube2iam
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          args:
+            - --host-interface={{ Values.host.interface }}
+          {%- if Values.host.iptables %}
+            - --host-ip={{ Values.host.ip }}
+          {%- endif %}
+            - --iptables={{ Values.host.iptables }}
+          {%- for key, value in Values.extraArgs.iteritems() %}
+            - --{{ key }}={{ value }}
+          {%- endfor %}
+          {%- if Values.verbose %}
+            - --verbose
+          {%- endif %}
+          env:
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - containerPort: 8181
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+        {%- if Values.host.iptables %}
+          securityContext:
+            privileged: true
+        {%- endif %}
+      hostNetwork: true
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.kube2iam__fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+{%- if (Capabilities.KubeVersion.Major=="1") and (Capabilities.KubeVersion.Minor>"5") %}
+  updateStrategy:
+    type: {{ Values.updateStrategy }}
+{%- endif %}

@@ -1,0 +1,30 @@
+{%- if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+ name: {{ self.fullname() }}
+ labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+{%- if Values.ingress.annotations -%}
+ annotations:
+   {%- for key, value in Values.ingress.annotations.iteritems() %}
+     {{ key }}: {{ value | quote() }}
+   {%- endfor %}
+{%- endif -%}
+spec:
+  rules:
+    - host: {{ Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ self.fullname() }}
+              servicePort: http
+{%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+{%- endif -%}
+{%- endif -%}

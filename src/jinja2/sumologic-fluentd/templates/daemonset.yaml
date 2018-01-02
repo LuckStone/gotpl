@@ -1,0 +1,150 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+spec:
+  template:
+    metadata:
+      name: {{ self.fullname() }}
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.name() }}
+        release: {{ Release.Name }}
+    spec:
+      containers:
+        - name: {{ self.fullname() }}
+          image: "{{ Values.image.name }}:{{ Values.image.tag }}"
+          imagePullPolicy: {{ Values.image.pullPolicy }}
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+          volumeMounts:
+            - name: host-logs
+              mountPath: /mnt/log/
+              readOnly: true
+            - name: host-logs
+              mountPath: /var/log/
+              readOnly: true
+            - name: docker-logs
+              mountPath: /var/lib/docker/
+              readOnly: true
+            - name: pos-files
+              mountPath: /mnt/pos/
+            {%- if Values.sumologic.fluentdSource=="systemd" %}
+            - name: rkt-logs
+              mountPath: /var/lib/rkt/
+              readOnly: true
+            {%- endif %}
+          env:
+            - name: COLLECTOR_URL
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ self.fullname-secrets() }}"
+                  key: collector-url
+            - name: FLUENTD_SOURCE
+              value: {{ quote Values.sumologic.fluentdSource }}
+            {%- if Values.sumologic.flushInterval %}
+            - name: FLUSH_INTERVAL
+              value: {{ quote Values.sumologic.flushInterval }}
+            {%- endif %}
+            {%- if Values.sumologic.numThreads %}
+            - name: NUM_THREADS
+              value: {{ quote Values.sumologic.numThreads }}
+            {%- endif %}
+            {%- if Values.sumologic.sourceName %}
+            - name: SOURCE_NAME
+              value: {{ quote Values.sumologic.sourceName }}
+            {%- endif %}
+            {%- if Values.sumologic.sourceCategory %}
+            - name: SOURCE_CATEGORY
+              value: {{ quote Values.sumologic.sourceCategory }}
+            {%- endif %}
+            {%- if Values.sumologic.sourceCategoryPrefix %}
+            - name: SOURCE_CATEGORY_PREFIX
+              value: {{ quote Values.sumologic.sourceCategoryPrefix }}
+            {%- endif %}
+            {%- if Values.sumologic.sourceCategoryReplaceDash %}
+            - name: SOURCE_CATEGORY_REPLACE_DASH
+              value: {{ quote Values.sumologic.sourceCategoryReplaceDash }}
+            {%- endif %}
+            {%- if Values.sumologic.logFormat %}
+            - name: LOG_FORMAT
+              value: {{ quote Values.sumologic.logFormat }}
+            {%- endif %}
+            {%- if Values.sumologic.kubernetesMeta %}
+            - name: KUBERNETES_META
+              value: {{ quote Values.sumologic.kubernetesMeta }}
+            {%- endif %}
+            {%- if Values.sumologic.excludeContainerRegex %}
+            - name: EXCLUDE_CONTAINER_REGEX
+              value: {{ quote Values.sumologic.excludeContainerRegex }}
+            {%- endif %}
+            {%- if Values.sumologic.excludeFacilityRegex %}
+            - name: EXCLUDE_FACILITY_REGEX
+              value: {{ quote Values.sumologic.excludeFacilityRegex }}
+            {%- endif %}
+            {%- if Values.sumologic.excludeHostRegex %}
+            - name: EXCLUDE_HOST_REGEX
+              value: {{ quote Values.sumologic.excludeHostRegex }}
+            {%- endif %}
+            {%- if Values.sumologic.excludeNamespaceRegex %}
+            - name: EXCLUDE_NAMESPACE_REGEX
+              value: {{ quote Values.sumologic.excludeNamespaceRegex }}
+            {%- endif %}
+            {%- if Values.sumologic.excludePath %}
+            - name: EXCLUDE_PATH
+              value: {{ quote Values.sumologic.excludePath }}
+            {%- endif %}
+            {%- if Values.sumologic.excludePodRegex %}
+            - name: EXCLUDE_POD_REGEX
+              value: {{ quote Values.sumologic.excludePodRegex }}
+            {%- endif %}
+            {%- if Values.sumologic.excludePriorityRegex %}
+            - name: EXCLUDE_PRIORITY_REGEX
+              value: {{ quote Values.sumologic.excludePriorityRegex }}
+            {%- endif %}
+            {%- if Values.sumologic.excludeUnitRegex %}
+            - name: EXCLUDE_UNIT_REGEX
+              value: {{ quote Values.sumologic.excludeUnitRegex }}
+            {%- endif %}
+            {%- if Values.sumologic.fluentdOpt %}
+            - name: FLUENTD_OPT
+              value: {{ quote Values.sumologic.fluentdOpt }}
+            {%- endif %}
+            {%- if Values.sumologic.verifySsl %}
+            - name: VERIFY_SSL
+              value: {{ quote Values.sumologic.verifySsl }}
+            {%- endif %}
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      volumes:
+        - name: pos-files
+          {%- if Values.persistence.enabled %}
+          hostPath:
+            path: {{ Values.persistence.hostPath }}
+          {%- else %}
+          emptyDir: {}
+          {%- endif %}
+        - name: host-logs
+          hostPath:
+            path: /var/log/
+        {%- if Values.sumologic.fluentdSource=="systemd" %}
+        - name: rkt-logs
+          hostPath:
+            path: /var/lib/rkt
+        {%- endif %}
+        - name: docker-logs
+          hostPath:
+            path: /var/lib/docker
+    {%- if Values.tolerations %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+    {%- endif %}
+  updateStrategy:
+    type: "{{ Values.updateStrategy }}"

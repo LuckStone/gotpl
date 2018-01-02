@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.prestashop__fullname() }}
+  labels:
+    app: {{ self.prestashop__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+    service.beta.kubernetes.io/external-traffic: OnlyLocal
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerIP: {{ Values.prestashopLoadBalancerIP | default("", true) }}
+  {%- endif %}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: {{ self.prestashop__fullname() }}

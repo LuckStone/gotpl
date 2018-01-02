@@ -1,0 +1,115 @@
+{%- if Values.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.mongodb__fullname() }}
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.mongodb__fullname() }}
+  labels:
+    app: {{ self.mongodb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  mongodb-root-password: {{ Values.mongodbRootPassword | default("", true) | b64enc() | quote() }}
+  mongodb-password: {{ Values.mongodbPassword | default("", true) | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.mongodb__fullname() }}
+  labels:
+    app: {{ self.mongodb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - name: mongodb
+    port: 27017
+    targetPort: mongodb
+  selector:
+    app: {{ self.mongodb__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.mongodb__fullname() }}
+  labels:
+    app: {{ self.mongodb__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.mongodb__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.mongodb__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: MONGODB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mongodb__fullname() }}
+              key: mongodb-root-password
+        - name: MONGODB_USERNAME
+          value: {{ Values.mongodbUsername | default("", true) | quote() }}
+        - name: MONGODB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mongodb__fullname() }}
+              key: mongodb-password
+        - name: MONGODB_DATABASE
+          value: {{ Values.mongodbDatabase | default("", true) | quote() }}
+        ports:
+        - name: mongodb
+          containerPort: 27017
+        livenessProbe:
+          exec:
+            command:
+            - mongo
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          exec:
+            command:
+            - mongo
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        volumeMounts:
+        - name: data
+          mountPath: /bitnami/mongodb
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+      - name: data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.mongodb__fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

@@ -1,0 +1,47 @@
+{%- if Values.pushgateway.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.prometheus__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.pushgateway.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.prometheus__pushgateway__fullname() }}
+spec:
+  replicas: {{ Values.pushgateway.replicaCount }}
+  template:
+    metadata:
+    {%- if Values.pushgateway.podAnnotations %}
+      annotations:
+{{ toYaml(Values.pushgateway.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.prometheus__name() }}
+        component: "{{ Values.pushgateway.name }}"
+        release: {{ Release.Name }}
+    spec:
+      containers:
+        - name: {{ self.prometheus__name() }}-{{ Values.pushgateway.name }}
+          image: "{{ Values.pushgateway.image.repository }}:{{ Values.pushgateway.image.tag }}"
+          imagePullPolicy: "{{ Values.pushgateway.image.pullPolicy }}"
+          args:
+          {%- for key, value in Values.pushgateway.extraArgs.iteritems() %}
+            - --{{ key }}={{ value }}
+          {%- endfor %}
+          ports:
+            - containerPort: 9091
+          readinessProbe:
+            httpGet:
+              path: /#/status
+              port: 9091
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+          resources:
+{{ toYaml(Values.pushgateway.resources) | indent(12) }}
+    {%- if Values.pushgateway.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.pushgateway.nodeSelector) | indent(8) }}
+    {%- endif %}
+{%- endif %}

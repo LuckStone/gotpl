@@ -1,0 +1,199 @@
+{%- if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.chronograf__fullname() }}
+  labels:
+    app: {{ self.chronograf__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+{{ toYaml(Values.ingress.annotations) | indent(4) }}
+spec:
+{%- if Values.ingress.tls %}
+  tls:
+    - hosts:
+      - {{ Values.ingress.hostname | quote() }}
+      secretName: {{ Values.ingress.secretName | default ("%s-tls" | format((self.chronograf__fullname() )) }}
+{%- endif %}
+  rules:
+  - host: {{ Values.ingress.hostname }}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: {{ self.chronograf__fullname() }}
+          servicePort: 80
+{%- endif -%}#---{%- if Values.persistence.enabled -%}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ self.chronograf__fullname() }}
+  labels:
+    app: {{ self.chronograf__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+  - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---{%- if Values.oauth.enabled %}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.chronograf__fullname() }}
+type: Opaque
+data:
+  token_secret: {{ Values.oauth.token_secret | b64enc() | quote() }}
+{%- if Values.oauth.github.enabled %}
+  gh_client_id: {{ Values.oauth.github.client_id | b64enc() | quote() }}
+  gh_client_secret: {{ Values.oauth.github.client_secret | b64enc() | quote() }}
+  gh_orgs: {{ Values.oauth.github.gh_orgs | b64enc() | quote() }}
+{%- endif %}
+{%- if Values.oauth.google.enabled %}
+  go_client_id: {{ Values.oauth.google.client_id | b64enc() | quote() }}
+  go_client_secret: {{ Values.oauth.google.client_secret | b64enc() | quote() }}
+  go_domains: {{ Values.oauth.google.domains | b64enc() | quote() }}
+  go_public_url: {{ Values.oauth.google.public_url | b64enc() | quote() }}
+{%- endif %}
+{%- if Values.oauth.heroku.enabled %}
+  he_client_id: {{ Values.oauth.heroku.client_id | b64enc() | quote() }}
+  he_client_secret: {{ Values.oauth.heroku.client_secret | b64enc() | quote() }}
+  he_orgs: {{ Values.oauth.heroku.heroku_orgs | b64enc() | quote() }}
+{%- endif %}
+{%- endif %}#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.chronograf__fullname() }}
+  labels:
+    app: {{ self.chronograf__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - port: 80
+    targetPort: 8888
+  selector:
+    app: {{ self.chronograf__fullname() }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.chronograf__fullname() }}
+  labels:
+    app: {{ self.chronograf__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: {{ Values.service.replicas }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.chronograf__fullname() }}
+    spec:
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+{%- if Values.oauth.enabled %}
+        env:
+        - name: TOKEN_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: token_secret
+{%- if Values.oauth.github.enabled %}
+        - name: GH_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: gh_client_id
+        - name: GH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: gh_client_secret
+        - name: GH_ORGS
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: gh_orgs
+{%- endif %}
+{%- if Values.oauth.heroku.enabled %}
+        - name: HEROKU_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: he_client_id
+        - name: HEROKU_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: he_client_secret
+        - name: HEROKU_ORGS
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: he_orgs
+{%- endif %}
+{%- if Values.oauth.google.enabled %}
+        - name: GOOGLE_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: go_client_id
+        - name: GOOGLE_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: go_client_secret
+        - name: GOOGLE_DOMAINS
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: go_domains
+        - name: PUBLIC_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.chronograf__fullname() }}
+              key: go_public_url
+{%- endif %}
+{%- endif %}
+        ports:
+        - containerPort: 8888
+          name: api
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: api
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: api
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/chronograf
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+        - name: data
+        {%- if Values.persistence.enabled %}
+          persistentVolumeClaim:
+            claimName: {{ self.chronograf__fullname() }}
+        {%- else %}
+          emptyDir: {}
+        {%- endif %}

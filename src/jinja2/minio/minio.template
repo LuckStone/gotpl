@@ -1,0 +1,447 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.minio__fullname() }}-config-cm
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+data:
+  config.json: |-
+    {
+      "version": "19",
+      "credential": {
+        "accessKey": {{ Values.accessKey | quote() }},
+        "secretKey": {{ Values.secretKey | quote() }}
+      },
+      "region": "us-east-1",
+      "browser": "on",
+      "logger": {
+        "console": {
+          "enable": true
+        },
+        "file": {
+          "enable": false,
+          "fileName": ""
+        }
+      },
+      "notify": {
+        "amqp": {
+          "1": {
+            "enable": {{ Values.minioConfig.aqmp.enable }},
+            "url": {{ Values.minioConfig.aqmp.url | quote() }},
+            "exchange": {{ Values.minioConfig.aqmp.exchange | quote() }},
+            "routingKey": {{ Values.minioConfig.aqmp.routingKey | quote() }},
+            "exchangeType": {{ Values.minioConfig.aqmp.exchangeType | quote() }},
+            "deliveryMode": {{ Values.minioConfig.aqmp.deliveryMode }},
+            "mandatory": {{ Values.minioConfig.aqmp.mandatory }},
+            "immediate": {{ Values.minioConfig.aqmp.immediate }},
+            "durable": {{ Values.minioConfig.aqmp.durable }},
+            "internal": {{ Values.minioConfig.aqmp.internal }},
+            "noWait": {{ Values.minioConfig.aqmp.noWait }},
+            "autoDeleted": {{ Values.minioConfig.aqmp.autoDeleted }}
+          }
+        },
+        "nats": {
+          "1": {
+            "enable": {{ Values.minioConfig.nats.enable }},
+            "address": {{ Values.minioConfig.nats.address | quote() }},
+            "subject": {{ Values.minioConfig.nats.subject | quote() }},
+            "username": {{ Values.minioConfig.nats.username | quote() }},
+            "password": {{ Values.minioConfig.nats.password | quote() }},
+            "token": {{ Values.minioConfig.nats.token | quote() }},
+            "secure": {{ Values.minioConfig.nats.secure }},
+            "pingInterval": {{ Values.minioConfig.nats.pingInterval | int64() }},
+            "streaming": {
+              "enable": {{ Values.minioConfig.nats.enableStreaming }},
+              "clusterID": {{ Values.minioConfig.nats.clusterID | quote() }},
+              "clientID": {{ Values.minioConfig.nats.clientID | quote() }},
+              "async": {{ Values.minioConfig.nats.async }},
+              "maxPubAcksInflight": {{ Values.minioConfig.nats.maxPubAcksInflight | int() }}
+            }
+          }
+        },
+        "elasticsearch": {
+          "1": {
+            "enable": {{ Values.minioConfig.elasticsearch.enable }},
+            "format": {{ Values.minioConfig.elasticsearch.format | quote() }},
+            "url": {{ Values.minioConfig.elasticsearch.url | quote() }},
+            "index": {{ Values.minioConfig.elasticsearch.index | quote() }}
+          }
+        },
+        "redis": {
+          "1": {
+            "enable": {{ Values.minioConfig.redis.enable }},
+            "format": {{ Values.minioConfig.redis.format | quote() }},
+            "address": {{ Values.minioConfig.redis.address | quote() }},
+            "password": {{ Values.minioConfig.redis.password | quote() }},
+            "key": {{ Values.minioConfig.redis.key | quote() }}
+          }
+        },
+        "postgresql": {
+          "1": {
+            "enable": {{ Values.minioConfig.postgresql.enable }},
+            "format": {{ Values.minioConfig.postgresql.format | quote() }},
+            "connectionString": {{ Values.minioConfig.postgresql.connectionString | quote() }},
+            "table": {{ Values.minioConfig.postgresql.table | quote() }},
+            "host": {{ Values.minioConfig.postgresql.host | quote() }},
+            "port": {{ Values.minioConfig.postgresql.port | quote() }},
+            "user": {{ Values.minioConfig.postgresql.user | quote() }},
+            "password": {{ Values.minioConfig.postgresql.password | quote() }},
+            "database": {{ Values.minioConfig.postgresql.database | quote() }}
+          }
+        },
+        "kafka": {
+          "1": {
+            "enable": {{ Values.minioConfig.kafka.enable }},
+            "brokers": {{ Values.minioConfig.kafka.brokers }},
+            "topic": {{ Values.minioConfig.kafka.topic | quote() }}
+          }
+        },
+        "webhook": {
+          "1": {
+            "enable": {{ Values.minioConfig.webhook.enable }},
+            "endpoint": {{ Values.minioConfig.webhook.endpoint | quote() }}
+          }
+        },
+        "mysql": {
+          "1": {
+            "enable": {{ Values.minioConfig.mysql.enable }},
+            "format": {{ Values.minioConfig.mysql.format | quote() }},
+            "dsnString": {{ Values.minioConfig.mysql.dsnString | quote() }},
+            "table": {{ Values.minioConfig.mysql.table | quote() }},
+            "host": {{ Values.minioConfig.mysql.host | quote() }},
+            "port": {{ Values.minioConfig.mysql.port | quote() }},
+            "user": {{ Values.minioConfig.mysql.user | quote() }},
+            "password": {{ Values.minioConfig.mysql.password | quote() }},
+            "database": {{ Values.minioConfig.mysql.database | quote() }}
+          }
+        },
+        "mqtt": {
+          "1": {
+            "enable": {{ Values.minioConfig.mqtt.enable }},
+            "broker": {{ Values.minioConfig.mqtt.broker | quote() }},
+            "topic": {{ Values.minioConfig.mqtt.topic | quote() }},
+            "qos": {{ Values.minioConfig.mqtt.qos | int() }},
+            "clientId": {{ Values.minioConfig.mqtt.clientId | quote() }},
+            "username": {{ Values.minioConfig.mqtt.username | quote() }},
+            "password": {{ Values.minioConfig.mqtt.password | quote() }}
+          }
+        }
+      }
+    }
+#---{%- if Values.networkPolicy.enabled %}
+kind: NetworkPolicy
+apiVersion: {{ self.minio__networkPolicy__apiVersion() }}
+metadata:
+  name: {{ self.minio__fullname() }}
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ self.minio__fullname() }}
+  ingress:
+    - ports:
+        - port: {{ Values.servicePort }}
+      {%- if  not  Values.networkPolicy.allowExternal %}
+      from:
+        - podSelector:
+            matchLabels:
+              {{ self.minio__fullname() }}-client: "true"
+      {%- endif %}
+{%- endif %}
+#---{%- if Values.mode=="standalone"=="shared" %}
+{%- if Values.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.minio__fullname() }}
+spec:
+  accessModes:
+    {%- if Values.mode=="shared" %}
+    - ReadWriteMany
+    {%- else %}
+    - {{ Values.persistence.accessMode | quote() }}
+    {%- endif %}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.minio__fullname() }}-user
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  accesskey: {{ Values.accessKey | b64enc() }}
+  secretkey: {{ Values.secretKey | b64enc() }}
+#---{%- if Values.mode=="distributed" %}
+{%- set nodeCount = Values.replicas | rangein() %}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.minio__fullname() }}
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  clusterIP: None
+  ports:
+    - name: service
+      port: 9000
+      targetPort: {{ Values.servicePort }}
+      protocol: TCP
+  selector:
+    app: {{ self.minio__fullname() }}
+---
+apiVersion: apps/v1beta1
+kind: StatefulSet
+metadata:
+  name: {{ self.minio__fullname() }}
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  serviceName: {{ self.minio__fullname() }}
+  replicas: {{ Values.replicas }}
+  selector:
+    matchLabels:
+      app: {{ self.minio__fullname() }}
+  template:
+    metadata:
+      name: {{ self.minio__fullname() }}
+      labels:
+        app: {{ self.minio__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+    spec:
+      volumes:
+        - name: minio-user
+          secret:
+            secretName: {{ self.minio__fullname() }}-user
+        - name: minio-server-config
+          configMap:
+            name: {{ self.minio__fullname() }}-config-cm
+        - name: podinfo
+          downwardAPI:
+            items:
+              - path: "labels"
+                fieldRef:
+                  fieldPath: metadata.labels
+      containers:
+        - name: minio
+          image: {{ Values.image }}:{{ Values.imageTag }}
+          imagePullPolicy: {{ Values.imagePullPolicy }}
+          {%- if Values.configPath %}
+          args:
+            - -C {{ Values.configPath }} server
+          {%- else %}
+          args:
+            - server
+            {%- for item in nodeCount %}
+            - http://{{ self.minio__fullname() }}-{{ item }}.{{ self.minio__fullname() }}.{{ Release.Namespace }}.svc.cluster.local{{ Values.mountPath }}
+            {%- endfor %}
+            {%- endif %}
+          volumeMounts:
+            - name: export
+              mountPath: {{ Values.mountPath }}
+            - name: minio-server-config
+              mountPath: {{ Values.configPath | default("/root/.minio/", true) | quote() }}
+            - name: podinfo
+              mountPath: /podinfo
+              readOnly: false
+          ports:
+            - name: service
+              containerPort: 9000
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.minio__fullname() }}-user
+                  key: accesskey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.minio__fullname() }}-user
+                  key: secretkey
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+  volumeClaimTemplates:
+    - metadata:
+        name: export
+        annotations:
+          {%- if Values.persistence.storageClass %}
+          volume.beta.kubernetes.io/storage-class: {{ Values.persistence.storageClass }}
+          {%- else %}
+          volume.alpha.kubernetes.io/storage-class: default
+          {%- endif %}
+      spec:
+        accessModes: [ {{ Values.persistence.accessMode | quote() }} ]
+        resources:
+          requests:
+            storage: {{ Values.persistence.size }}
+  {%- endif %}
+#---kind: Service
+apiVersion: v1
+metadata:
+  name: {{ self.minio__fullname() }}-svc
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerIP: {{ Values.minioLoadBalancerIP | default("", true) }}
+  {%- endif %}
+  selector:
+    app: {{ self.minio__fullname() }}
+  ports:
+    - name: service
+      port: 9000
+      targetPort: {{ Values.servicePort }}
+      protocol: TCP
+#---{%- if Values.defaultBucket.enabled %}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ self.minio__fullname() }}-create-bucket
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+  annotations:
+    "helm.sh/hook": post-install
+spec:
+  restartPolicy: OnFailure
+  containers:
+  - name: minio-mc
+    image: minio/mc
+    command: ["/bin/sh", "-c",
+    "/usr/bin/mc config host add myminio http://$MINIO_ENDPOINT:9000 $MINIO_ACCESS_KEY $MINIO_SECRET_KEY;
+    /usr/bin/mc rm -r --force myminio/{{ Values.defaultBucket.name }};
+    /usr/bin/mc mb myminio/{{ Values.defaultBucket.name }};
+    /usr/bin/mc policy {{ Values.defaultBucket.policy }} myminio/{{ Values.defaultBucket.name }};"]
+    env:
+      - name: MINIO_ACCESS_KEY
+        valueFrom:
+          secretKeyRef:
+            name: {{ self.minio__fullname() }}-user
+            key: accesskey
+      - name: MINIO_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: {{ self.minio__fullname() }}-user
+            key: secretkey
+      - name: MINIO_ENDPOINT
+        value: {{ self.minio__fullname() }}-svc
+{%- endif %}
+#---{%- if Values.mode=="standalone"=="shared" %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.minio__fullname() }}
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  {%- if Values.mode=="shared" %}
+  replicas: {{ Values.replicas }}
+  {%- endif %}
+  selector:
+    matchLabels:
+      app: {{ self.minio__fullname() }}
+  template:
+    metadata:
+      name: {{ self.minio__fullname() }}
+      labels:
+        app: {{ self.minio__fullname() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        release: "{{ Release.Name }}"
+        heritage: "{{ Release.Service }}"
+    spec:
+      volumes:
+        - name: podinfo
+          downwardAPI:
+            items:
+              - path: "labels"
+                fieldRef:
+                  fieldPath: metadata.labels
+        - name: export
+        {%- if Values.persistence.enabled %}
+          persistentVolumeClaim:
+            claimName: {{ self.minio__fullname() }}
+        {%- else %}
+          emptyDir: {}
+        {%- endif %}
+        - name: minio-server-config
+          configMap:
+            name: {{ self.minio__fullname() }}-config-cm
+        - name: minio-user
+          secret:
+            secretName: {{ self.minio__fullname() }}-user
+      containers:
+        - name: minio
+          image: {{ Values.image }}:{{ Values.imageTag }}
+          imagePullPolicy: {{ Values.imagePullPolicy }}
+          {%- if Values.configPath %}
+          args: ["-C", "{{ Values.configPath }}", "server", "{{ Values.mountPath }}"]
+          {%- else %}
+          args: ["server", "{{ Values.mountPath }}"]
+          {%- endif %}
+          volumeMounts:
+            - name: export
+              mountPath: {{ Values.mountPath }}
+            - name: minio-server-config
+              mountPath: {{ Values.configPath | default("/root/.minio/", true) | quote() }}
+            - name: podinfo
+              mountPath: /podinfo
+              readOnly: false
+          ports:
+            - name: service
+              containerPort: 9000
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.minio__fullname() }}-user
+                  key: accesskey
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.minio__fullname() }}-user
+                  key: secretkey
+          livenessProbe:
+            tcpSocket:
+              port: 9000
+            timeoutSeconds: 1
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+{%- endif %}

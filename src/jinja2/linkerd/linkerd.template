@@ -1,0 +1,155 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: {{ self.linkerd__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.linkerd__fullname() }}-config
+data:
+{%- if Values.config %}
+  config.yaml: |-
+{{ toYaml(Values.config) | indent(4) }}
+{%- else %}
+  config.yaml: |-
+    admin:
+      port: 9990
+
+    namers:
+    - kind: io.l5d.k8s
+      # kubectl proxy forwards localhost:8001 to the Kubernetes master API
+      host: localhost
+      port: 8001
+    routers:
+    - protocol: http
+      # Incoming requests to linkerd with a Host header of "hello" get assigned
+      # a name like /http/1.1/GET/hello.  This dtab transforms that into
+      # /#/io.l5d.k8s/{{ Release.Namespace }}/{{ Values.linkerd.discoveryPortName }}/hello which indicates that the kubernetes
+      # namer should query the API for ports named "{{ Values.linkerd.discoveryPortName }}" on pods in the
+      # "{{ Release.Namespace }}" namespace named "hello".  linkerd will then load balance over
+      # those pods.
+      dtab: |
+        /http/1.1/* => /#/io.l5d.k8s/{{ Release.Namespace }}/{{ Values.linkerd.discoveryPortName }}
+      servers:
+      - ip: 0.0.0.0
+        port: 4140
+{%- endif %}
+#---apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  labels:
+    app: {{ self.linkerd__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.linkerd__fullname() }}
+spec:
+  template:
+    metadata:
+      annotations:
+      {%- for key, value in Values.linkerd.annotations.iteritems() %}
+        {{ key }}: {{ value }}
+      {%- endfor %}
+      labels:
+        app: {{ self.linkerd__fullname() }}
+        release: "{{ Release.Name }}"
+    spec:
+      volumes:
+      - name: {{ self.linkerd__fullname() }}-config
+        configMap:
+          name: "{{ self.linkerd__fullname() }}-config"
+      containers:
+      - name: {{ Values.linkerd.name }}
+        image: {{ Values.linkerd.image }}
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        args:
+        - /io.buoyant/linkerd/config/config.yaml
+        ports:
+        - name: incoming
+          containerPort: 4141
+          hostPort: 4141
+        - name: outgoing
+          containerPort: 4140
+          hostPort: 4140
+        - name: admin
+          containerPort: 9990
+          hostPort: 9990
+        resources:
+{{ toYaml(Values.linkerd.resources) | indent(10) }}
+        livenessProbe:
+          httpGet:
+            path: /admin
+            port: 9990
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        volumeMounts:
+        - name: "{{ self.linkerd__fullname() }}-config"
+          mountPath: "/io.buoyant/linkerd/config"
+          readOnly: true
+      - name: kubectl
+        image: {{ Values.kubectl.image }}
+        args:
+        - "proxy"
+        - "-p"
+        - "8001"
+        resources:
+{{ toYaml(Values.kubectl.resources) | indent(10) }}
+#---{%- if Values.linkerd.ingress.enabled -%}
+{%- set globalContext = . -%}
+{%- set servicePort = Values.linkerd.httpPort -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  annotations:
+  {%- for key, value in Values.linkerd.ingress.annotations.iteritems() %}
+    {{ key }}: {{ value | quote() }}
+  {%- endfor %}
+  labels:
+    app: {{ self.linkerd__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.linkerd.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.linkerd__fullname() }}
+spec:
+  rules:
+  {%- for item in Values.linkerd.ingress.hosts %}
+    - host: {{ item }}
+      http:
+        paths:
+          - backend:
+              serviceName: {{ template "linkerd.fullname" globalContext }}
+              servicePort: {{ servicePort }}
+  {%- endfor -%}
+  {%- if Values.linkerd.ingress.tls %}
+  tls:
+{{ toYaml(Values.linkerd.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.linkerd__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+  annotations:
+    prometheus.io/scrape: {{ Values.prometheus.scrape | quote() }}
+    prometheus.io/probe: {{ Values.prometheus.probe | quote() }}
+    prometheus.io/path: {{ Values.prometheus.path | quote() }}
+    prometheus.io/port: "9990"
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - name: outgoing
+    port: 4140
+  - name: incoming
+    port: 4141
+  - name: admin
+    port: 9990
+  selector:
+    app: {{ self.linkerd__fullname() }}

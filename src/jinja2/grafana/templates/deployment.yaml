@@ -1,0 +1,88 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.grafana__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Values.server.name }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+  name: {{ self.grafana__server__fullname() }}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      annotations:
+        checksum/config: ""
+        checksum/dashboards-config: ""
+{%- if Values.server.annotations %}
+      {%- for key, value in Values.server.annotations.iteritems() %}
+        {{ key }}: {{ value }}
+      {%- endfor %}
+{%- endif %}
+      labels:
+        app: {{ self.grafana__fullname() }}
+        component: "{{ Values.server.name }}"
+        release: "{{ Release.Name }}"
+    spec:
+      nodeSelector:
+{{ toYaml(Values.server.nodeSelector) | indent(8) }}
+  {%- if Values.server.tolerations %}
+      tolerations:
+{{ toYaml(Values.server.tolerations) | indent(8) }}
+  {%- endif %}
+      containers:
+        - name: {{ self.grafana__name() }}
+          image: "{{ Values.server.image }}"
+          imagePullPolicy: {{ Values.server.imagePullPolicy | default("Always", true) }}
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.grafana__server__fullname() }}
+                  key: grafana-admin-user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.grafana__server__fullname() }}
+                  key: grafana-admin-password
+            {%- if Values.server.installPlugins %}
+            - name: GF_INSTALL_PLUGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ self.grafana__server__fullname() }}-config
+                  key: grafana-install-plugins
+            {%- endif %}
+          ports:
+            - containerPort: 3000
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 30
+            timeoutSeconds: 30
+          resources:
+{{ toYaml(Values.server.resources) | indent(12) }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: {{ Values.server.configLocalPath | default("/etc/grafana", true) | quote() }}
+            - name: dashboard-volume
+              mountPath: {{ Values.server.dashboardLocalPath | default("/var/lib/grafana/dashboards", true) | quote() }}
+            - name: storage-volume
+              mountPath: {{ Values.server.storageLocalPath | default("/var/lib/grafana", true) | quote() }}
+              subPath: "{{ Values.server.persistentVolume.subPath }}"
+      terminationGracePeriodSeconds: {{ Values.server.terminationGracePeriodSeconds | default(300, true) }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ self.grafana__server__fullname() }}-config
+        - name: dashboard-volume
+          configMap:
+            name: {{ self.grafana__server__fullname() }}-dashs
+        - name: storage-volume
+      {%- if Values.server.persistentVolume.enabled %}
+          persistentVolumeClaim:
+            claimName: {%- if Values.server.persistentVolume.existingClaim %}{{ Values.server.persistentVolume.existingClaim }}{%- else %}{{ self.grafana__server__fullname() }}{%- endif %}
+      {%- else %}
+          emptyDir: {}
+      {%- endif -%}

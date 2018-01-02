@@ -1,0 +1,46 @@
+{%- if Values.influxURL %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.kapacitor__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+    app: {{ self.kapacitor__fullname() }}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.kapacitor__fullname() }}
+    spec:
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        env:
+        - name: KAPACITOR_HOSTNAME
+          value: {{ self.kapacitor__fullname() }}.{{ Release.Namespace }}
+        - name: KAPACITOR_INFLUXDB_0_URLS_0
+          value: {{ Values.influxURL }}
+        {%- for key, val in Values.envVars.iteritems() %}
+        - name: {{ key }}
+          value: {{ val | quote() }}
+        {%- endfor %}
+        ports:
+        - containerPort: 9092
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kapacitor
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}
+      volumes:
+        - name: data
+        {%- if Values.persistence.enabled %}
+          persistentVolumeClaim:
+            claimName: {{ self.kapacitor__fullname() }}
+        {%- else %}
+          emptyDir: {}
+        {%- endif %}
+{%- endif %}

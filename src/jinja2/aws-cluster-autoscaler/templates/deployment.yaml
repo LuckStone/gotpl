@@ -1,0 +1,57 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.fullname() }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+    {%- if Values.podAnnotations %}
+      annotations:
+{{ toYaml(Values.podAnnotations) | indent(8) }}
+    {%- endif %}
+      labels:
+        app: {{ self.name() }}
+        release: {{ Release.Name }}
+    spec:
+      containers:
+        - name: {{ self.name() }}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: "{{ Values.image.pullPolicy }}"
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider=aws
+          {%- for item in Values.autoscalingGroups %}
+            - --nodes={{ item.minSize }}:{{ item.maxSize }}:{{ item.name }}
+          {%- endfor %}
+            - --scale-down-delay={{ Values.scaleDownDelay }}
+            - --skip-nodes-with-local-storage={{ Values.skipNodes.withLocalStorage }}
+            - --skip-nodes-with-system-pods={{ Values.skipNodes.withSystemPods }}
+            - --v=4
+          {%- for key, value in Values.extraArgs.iteritems() %}
+            - --{{ key }}={{ value }}
+          {%- endfor %}
+          env:
+            - name: AWS_REGION
+              value: "{{ Values.awsRegion }}"
+          ports:
+            - containerPort: 8085
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+          volumeMounts:
+            - name: ssl-certs
+              mountPath: /etc/ssl/certs/ca-certificates.crt
+              readOnly: true
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+      volumes:
+        - name: ssl-certs
+          hostPath:
+            path: /etc/ssl/certs/ca-certificates.crt

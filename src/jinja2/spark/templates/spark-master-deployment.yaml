@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.master-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  ports:
+    - port: {{ Values.Master.ServicePort }}
+      targetPort: {{ Values.Master.ContainerPort }}
+  selector:
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.webui-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  ports:
+    - port: {{ Values.WebUi.ServicePort }}
+      targetPort: {{ Values.WebUi.ContainerPort }}
+  selector:
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  type: "LoadBalancer"
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.master-fullname() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+spec:
+  replicas: {{ Values.Master.Replicas | default(1, true) }}
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+  template:
+    metadata:
+      labels:
+        heritage: {{ Release.Service | quote() }}
+        release: {{ Release.Name | quote() }}
+        chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+        component: "{{ Release.Name }}-{{ Values.Master.Component }}"
+    spec:
+      containers:
+        - name: {{ self.master-fullname() }}
+          image: "{{ Values.Master.Image }}:{{ Values.Master.ImageTag }}"
+          command: ["/bin/sh","-c"]
+          args: ["echo $(hostname -i) {{ self.master-fullname() }} >> /etc/hosts; /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --ip {{ self.master-fullname() }} --port {{ Values.Master.ServicePort }} --webui-port {{ Values.WebUi.ContainerPort }}"]
+          ports:
+            - containerPort: {{ Values.Master.ContainerPort }}
+            - containerPort: {{ Values.WebUi.ContainerPort }}
+          resources:
+            requests:
+              cpu: "{{ Values.Master.Cpu }}"
+              memory: "{{ Values.Master.Memory }}"
+          env:
+          - name: SPARK_DAEMON_MEMORY
+            value: {{ Values.Master.DaemonMemory | default("1g", true) | quote() }}

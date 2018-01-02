@@ -1,0 +1,130 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-odoo
+  labels:
+    app: test-odoo
+    chart: "odoo-0.5.13"
+    release: "test"
+    heritage: "odoo"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-odoo
+  labels:
+    app: test-odoo
+    chart: "odoo-0.5.13"
+    release: "test"
+    heritage: "odoo"
+type: Opaque
+data:
+  odoo-password: "CmJqeGtoc2ViZmsK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-odoo
+  labels:
+    app: test-odoo
+    chart: "odoo-0.5.13"
+    release: "test"
+    heritage: "odoo"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  selector:
+    app: test-odoo
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-odoo
+  labels:
+    app: test-odoo
+    chart: "odoo-0.5.13"
+    release: "test"
+    heritage: "odoo"
+spec:
+  template:
+    metadata:
+      labels:
+        app: test-odoo
+    spec:
+      containers:
+      - name: test-odoo
+        image: "bitnami/odoo:10.0.20171012-r0"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: POSTGRESQL_HOST
+          value: test-postgresql
+        - name: POSTGRESQL_PORT_NUMBER
+          value: "5432"
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-postgresql
+              key: postgres-password
+        - name: ODOO_EMAIL
+          value: "user@example.com"
+        - name: ODOO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-odoo
+              key: odoo-password
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-odoo
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: ""
+        ports:
+        - name: http
+          containerPort: 8069
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 180
+          timeoutSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 5
+          timeoutSeconds: 1
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: odoo-data
+          mountPath: /bitnami/odoo
+      volumes:
+      - name: odoo-data
+        persistentVolumeClaim:
+          claimName: test-odoo

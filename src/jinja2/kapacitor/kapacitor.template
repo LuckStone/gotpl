@@ -1,0 +1,87 @@
+{%- if Values.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.kapacitor__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+    app: {{ self.kapacitor__fullname() }}
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.kapacitor__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+    app: {{ self.kapacitor__fullname() }}
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - port: 9092
+    targetPort: 9092
+    name: api
+  selector:
+    app: {{ self.kapacitor__fullname() }}
+#---{%- if Values.influxURL %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.kapacitor__fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+    app: {{ self.kapacitor__fullname() }}
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.kapacitor__fullname() }}
+    spec:
+      containers:
+      - name: {{ Chart.Name }}
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        env:
+        - name: KAPACITOR_HOSTNAME
+          value: {{ self.kapacitor__fullname() }}.{{ Release.Namespace }}
+        - name: KAPACITOR_INFLUXDB_0_URLS_0
+          value: {{ Values.influxURL }}
+        {%- for key, val in Values.envVars.iteritems() %}
+        - name: {{ key }}
+          value: {{ val | quote() }}
+        {%- endfor %}
+        ports:
+        - containerPort: 9092
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/kapacitor
+        resources:
+{{ toYaml(Values.resources) | indent(12) }}
+      volumes:
+        - name: data
+        {%- if Values.persistence.enabled %}
+          persistentVolumeClaim:
+            claimName: {{ self.kapacitor__fullname() }}
+        {%- else %}
+          emptyDir: {}
+        {%- endif %}
+{%- endif %}

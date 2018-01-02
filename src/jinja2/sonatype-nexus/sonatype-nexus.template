@@ -1,0 +1,128 @@
+{%- if Values.ingress.enabled -%}
+{%- set serviceName =  self.fullname() -%}
+{%- set servicePort = Values.service.externalPort -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+  annotations:
+    {%- for key, value in Values.ingress.annotations.iteritems() %}
+      {{ key }}: {{ value | quote() }}
+    {%- endfor %}
+spec:
+  rules:
+    {%- for host in Values.ingress.hosts %}
+    - host: {{ host }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ serviceName }}
+              servicePort: {{ servicePort }}
+    {%- endfor -%}
+  {%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+  {%- endif -%}
+{%- endif -%}
+#---{%- if Values.persistence.enabled and ( not  Values.persistence.existingClaim) %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+spec:
+  type: {{ Values.service.type }}
+  ports:
+    - port: {{ Values.service.externalPort }}
+      targetPort: {{ Values.service.internalPort }}
+      protocol: TCP
+      name: {{ Values.service.name }}
+  selector:
+    app: {{ self.name() }}
+    release: {{ Release.Name }}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ self.name() }}
+      release: {{ Release.Name }}
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.name() }}
+        chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+        release: {{ Release.Name }}
+        heritage: {{ Release.Service }}
+    spec:
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: {{ Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ Values.service.internalPort }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ Values.service.internalPort }}
+            initialDelaySeconds: {{ Values.service.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ Values.service.livenessProbe.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ Values.service.internalPort }}
+            initialDelaySeconds: {{ Values.service.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ Values.service.readinessProbe.periodSeconds }}
+            failureThreshold: {{ Values.service.readinessProbe.failureThreshold }}
+          volumeMounts:
+            - mountPath: /nexus-data
+              name: nexus-data-volume
+      volumes:
+      - name: nexus-data-volume
+        {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}
+        {%- else %}
+          emptyDir: {}
+        {%- endif -%}

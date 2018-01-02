@@ -1,0 +1,321 @@
+{%- if Values.artifactory.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.artifactory__artifactory__fullname() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.artifactory.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.artifactory.persistence.size | quote() }}
+{%- if Values.artifactory.persistence.storageClass %}
+{%- if ("-"==Values.artifactory.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.artifactory.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---{%- if Values.nginx.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.artifactory__nginx__fullname() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.nginx.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.nginx.persistence.size | quote() }}
+{%- if Values.nginx.persistence.storageClass %}
+{%- if ("-"==Values.nginx.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.nginx.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---{%- if Values.database.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.artifactory__database__fullname() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.database.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.database.persistence.size | quote() }}
+{%- if Values.database.persistence.storageClass %}
+{%- if ("-"==Values.database.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.database.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.artifactory__fullname() }}
+type: Opaque
+data:
+  {%- if Values.database.env.pass %}
+  artifactory-database-password: {{ Values.database.env.pass | b64enc() | quote() }}
+  {%- else %}
+  artifactory-database-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.artifactory__artifactory__name() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.artifactory.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  type: {{ Values.artifactory.service.type }}
+  ports:
+  - port: {{ Values.artifactory.externalPort }}
+    targetPort: {{ Values.artifactory.internalPort }}
+    protocol: TCP
+    name: {{ Release.Name }}
+  selector:
+    app: {{ self.artifactory__name() }}
+    component: "{{ Values.artifactory.name }}"
+    release: {{ Release.Name }}#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.artifactory__nginx__name() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.nginx.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  type: {{ Values.nginx.service.type }}
+  ports:
+  - port: {{ Values.nginx.externalPortHttp }}
+    targetPort: {{ Values.nginx.internalPortHttp }}
+    protocol: TCP
+    name: {{ Values.nginx.name }}http
+  - port: {{ Values.nginx.externalPortHttps }}
+    targetPort: {{ Values.nginx.internalPortHttps }}
+    protocol: TCP
+    name: {{ Release.Name }}https
+  selector:
+    app: {{ self.artifactory__name() }}
+    component: "{{ Values.nginx.name }}"
+    release: {{ Release.Name }}#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.artifactory__database__name() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.database.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  type: {{ Values.database.service.type }}
+  ports:
+  - port: {{ Values.database.externalPort }}
+    targetPort: {{ Values.database.internalPort }}
+    protocol: TCP
+    name: {{ Release.Name }}
+  selector:
+    app: {{ self.artifactory__name() }}
+    component: "{{ Values.database.name }}"
+    release: {{ Release.Name }}#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.artifactory__artifactory__fullname() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.artifactory.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  replicas: {{ Values.artReplicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.artifactory__name() }}
+        component: "{{ Values.artifactory.name }}"
+        release: {{ Release.Name }}
+    spec:
+      initContainers:
+      - name: "remove-lost-found"
+        image: "{{ Values.initContainerImage }}"
+        imagePullPolicy: {{ Values.artifactory.image.pullPolicy }}
+        command:
+        - "rm"
+        - "-rf"
+        - "{{ Values.artifactory.persistence.mountPath }}/lost+found"
+        volumeMounts:
+        - mountPath: {{ Values.artifactory.persistence.mountPath | quote() }}
+          name: artifactory-volume
+      containers:
+      - name: {{ Values.artifactory.name }}
+        image: "{{ Values.artifactory.image.repository }}:{{ Values.artifactory.image.version }}"
+        imagePullPolicy: {{ Values.artifactory.image.pullPolicy }}
+        env:
+        - name: DB_TYPE
+          value: {{ Values.database.env.type }}
+        - name: DB_USER
+          value: {{ Values.database.env.user }}
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.artifactory__fullname() }}
+              key: artifactory-database-password
+        - name: DB_HOST
+          value: {{ self.artifactory__database__name() }}
+        ports:
+        - containerPort: {{ Values.artifactory.internalPort }}
+        volumeMounts:
+        - mountPath: {{ Values.artifactory.persistence.mountPath | quote() }}
+          name: artifactory-volume
+      volumes:
+      - name: artifactory-volume
+      {%- if Values.artifactory.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.artifactory__artifactory__fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.artifactory__nginx__fullname() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.nginx.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  replicas: {{ Values.nginx.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.artifactory__name() }}
+        component: "{{ Values.nginx.name }}"
+        release: {{ Release.Name }}
+    spec:
+      initContainers:
+      - name: "remove-lost-found"
+        image: "{{ Values.initContainerImage }}"
+        imagePullPolicy: {{ Values.nginx.image.pullPolicy }}
+        command:
+        - "rm"
+        - "-rf"
+        - "{{ Values.nginx.persistence.mountPath }}/lost+found"
+        volumeMounts:
+        - mountPath: {{ Values.nginx.persistence.mountPath | quote() }}
+          name: nginx-volume
+      containers:
+      - name: {{ Values.nginx.name }}
+        image: "{{ Values.nginx.image.repository }}:{{ Values.nginx.image.version }}"
+        imagePullPolicy: {{ Values.nginx.image.pullPolicy }}
+        env:
+        - name: ART_BASE_URL
+          value: {{ Values.nginx.env.artUrl }}
+        - name: SSL
+          value: "{{ Values.nginx.env.ssl }}"
+        ports:
+        - containerPort: {{ Values.nginx.internalPortHttp }}
+        - containerPort: {{ Values.nginx.internalPortHttps }}
+        volumeMounts:
+        - mountPath: {{ Values.nginx.persistence.mountPath | quote() }}
+          name: nginx-volume
+      volumes:
+      - name: nginx-volume
+      {%- if Values.nginx.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.artifactory__nginx__fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.artifactory__database__fullname() }}
+  labels:
+    app: {{ self.artifactory__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.database.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.artifactory__name() }}
+        component: "{{ Values.database.name }}"
+        release: {{ Release.Name }}
+    spec:
+      initContainers:
+      - name: "remove-lost-found"
+        image: "{{ Values.initContainerImage }}"
+        imagePullPolicy: "{{ Values.database.image.pullPolicy }}"
+        command:
+        - "rm"
+        - "-rf"
+        - "{{ Values.database.persistence.mountPath }}/lost+found"
+        volumeMounts:
+        - mountPath: {{ Values.database.persistence.mountPath | quote() }}
+          name: postgresql-volume
+      containers:
+      - name: {{ Values.database.name }}
+        image: "{{ Values.database.image.repository }}:{{ Values.database.image.version }}"
+        imagePullPolicy: {{ Values.database.image.pullPolicy }}
+        env:
+        - name: POSTGRES_DB
+          value: {{ Values.database.env.name }}
+        - name: POSTGRES_USER
+          value: {{ Values.database.env.user }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.artifactory__fullname() }}
+              key: artifactory-database-password
+        ports:
+        - containerPort: {{ Values.database.internalPort }}
+        volumeMounts:
+        - mountPath: {{ Values.database.persistence.mountPath | quote() }}
+          name: postgresql-volume
+      volumes:
+      - name: postgresql-volume
+      {%- if Values.database.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.artifactory__database__fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

@@ -1,0 +1,22 @@
+{%- if Values.Master.HostName %}
+apiVersion: {{ Values.NetworkPolicy.ApiVersion }}
+kind: Ingress
+metadata:
+{%- if Values.Master.Ingress.Annotations %}
+  annotations:
+{{ toYaml(Values.Master.Ingress.Annotations) | indent(4) }}
+{%- endif %}
+  name: {{ self.jenkins__fullname() }}
+spec:
+  rules:
+  - host: {{ Values.Master.HostName | quote() }}
+    http:
+      paths:
+      - backend:
+          serviceName: {{ self.jenkins__fullname() }}
+          servicePort: {{ Values.Master.ServicePort }}
+{%- if Values.Master.Ingress.TLS %}
+  tls:
+{{ toYaml(Values.Master.Ingress.TLS) | indent(4) }}
+{%- endif -%}
+{%- endif %}

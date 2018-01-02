@@ -1,0 +1,159 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-phpbb-apache
+  labels:
+    app: test-phpbb
+    chart: "phpbb-0.5.0"
+    release: "test"
+    heritage: "phpbb"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-phpbb-phpbb
+  labels:
+    app: test-phpbb
+    chart: "phpbb-0.5.0"
+    release: "test"
+    heritage: "phpbb"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-phpbb
+  labels:
+    app: test-phpbb
+    chart: "phpbb-0.5.0"
+    release: "test"
+    heritage: "phpbb"
+type: Opaque
+data:
+  phpbb-password: "Cnp2Z2dvb3F4dHkK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-phpbb
+  labels:
+    app: test-phpbb
+    chart: "phpbb-0.5.0"
+    release: "test"
+    heritage: "phpbb"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: test-phpbb
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-phpbb
+  labels:
+    app: test-phpbb
+    chart: "phpbb-0.5.0"
+    release: "test"
+    heritage: "phpbb"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-phpbb
+    spec:
+      containers:
+      - name: test-phpbb
+        image: "bitnami/phpbb:3.2.1-r1"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: PHPBB_USERNAME
+          value: "user"
+        - name: PHPBB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-phpbb
+              key: phpbb-password
+        - name: PHPBB_EMAIL
+          value: "user@example.com"
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-phpbb
+              key: smtp-password
+        - name: SMTP_PROTOCOL
+          value: ""
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /ucp.php
+            port: http
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /ucp.php
+            port: http
+          initialDelaySeconds: 30
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: phpbb-data
+          mountPath: /bitnami/phpbb
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: phpbb-data
+        persistentVolumeClaim:
+          claimName: test-phpbb-phpbb
+      - name: apache-data
+        persistentVolumeClaim:
+          claimName: test-phpbb-apache

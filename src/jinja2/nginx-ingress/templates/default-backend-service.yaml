@@ -1,0 +1,37 @@
+{%- if Values.defaultBackend.enabled %}
+apiVersion: v1
+kind: Service
+metadata:
+{%- if Values.defaultBackend.service.annotations %}
+  annotations:
+{{ toYaml(Values.defaultBackend.service.annotations) | indent(4) }}
+{%- endif %}
+  labels:
+    app: {{ self.name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    component: "{{ Values.defaultBackend.name }}"
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  name: {{ self.defaultBackend__fullname() }}
+spec:
+  clusterIP: "{{ Values.defaultBackend.service.clusterIP }}"
+{%- if Values.defaultBackend.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.defaultBackend.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.defaultBackend.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.defaultBackend.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.defaultBackend.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.defaultBackend.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - port: {{ Values.defaultBackend.service.servicePort }}
+      targetPort: 8080
+  selector:
+    app: {{ self.name() }}
+    component: "{{ Values.defaultBackend.name }}"
+    release: {{ Release.Name }}
+  type: "{{ Values.defaultBackend.service.type }}"
+{%- endif %}

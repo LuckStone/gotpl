@@ -1,0 +1,25 @@
+{%- if Values.mode=="standalone"=="shared" %}
+{%- if Values.persistence.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.minio__fullname() }}
+spec:
+  accessModes:
+    {%- if Values.mode=="shared" %}
+    - ReadWriteMany
+    {%- else %}
+    - {{ Values.persistence.accessMode | quote() }}
+    {%- endif %}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{%- endif %}
+{%- endif %}

@@ -1,0 +1,82 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.rabbitmq__fullname() }}
+  labels:
+    app: {{ self.rabbitmq__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.rabbitmq__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.rabbitmq__fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: RABBITMQ_USERNAME
+          value: {{ Values.rabbitmqUsername | default("", true) | quote() }}
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.rabbitmq__fullname() }}
+              key: rabbitmq-password
+        - name: RABBITMQ_ERLANG_COOKIE
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.rabbitmq__fullname() }}
+              key: rabbitmq-erlang-cookie
+        - name: RABBITMQ_NODE_PORT_NUMBER
+          value: {{ Values.rabbitmqNodePort | default("5672", true) | quote() }}
+        - name: RABBITMQ_NODE_TYPE
+          value: {{ Values.rabbitmqNodeType | default("stats", true) | quote() }}
+        - name: RABBITMQ_NODE_NAME
+          value: {{ "%s@%s" | format((default,"rabbit",Values.rabbitmqNodeName) ) "localhost" | quote() }}
+        - name: RABBITMQ_CLUSTER_NODE_NAME
+          value: {{ Values.rabbitmqClusterNodeName | default("", true) | quote() }}
+        - name: RABBITMQ_VHOST
+          value: {{ Values.rabbitmqVhost | default("/", true) | quote() }}
+        - name: RABBITMQ_MANAGER_PORT_NUMBER
+          value: {{ Values.rabbitmqManagerPort | default("15672", true) | quote() }}
+        ports:
+        - name: epmd
+          containerPort: 4369
+        - name: amqp
+          containerPort: {{ Values.rabbitmqNodePort | default("5672", true) }}
+        - name: dist
+          containerPort: {{ Values.rabbitmqNodePort | default("5672", true) | add(20000) }}
+        - name: stats
+          containerPort: {{ Values.rabbitmqManagerPort | default("15672", true) }}
+        livenessProbe:
+          exec:
+            command:
+            - rabbitmqctl
+            - status
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          exec:
+            command:
+            - rabbitmqctl
+            - status
+          initialDelaySeconds: 10
+          timeoutSeconds: 3
+          periodSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /bitnami/rabbitmq
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+      - name: data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ Values.persistence.existingClaim | default  (self.rabbitmq__fullname()) }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif -%}

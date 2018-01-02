@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.g2__fullname() }}
+  labels:
+    app: "{{ self.g2__name() }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  ports:
+  - name: http
+    port: 4730
+    protocol: TCP
+    targetPort: http
+  - name: restapi
+    port: 3000
+    protocol: TCP
+    targetPort: restapi
+  selector:
+    app: "{{ self.g2__name() }}"
+    release: "{{ Release.Name }}"
+  type: '{{ Values.g2.serviceType }}'

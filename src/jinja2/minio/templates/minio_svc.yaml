@@ -1,0 +1,21 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: {{ self.minio__fullname() }}-svc
+  labels:
+    app: {{ self.minio__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  {%- if Values.serviceType=="LoadBalancer" %}
+  loadBalancerIP: {{ Values.minioLoadBalancerIP | default("", true) }}
+  {%- endif %}
+  selector:
+    app: {{ self.minio__fullname() }}
+  ports:
+    - name: service
+      port: 9000
+      targetPort: {{ Values.servicePort }}
+      protocol: TCP

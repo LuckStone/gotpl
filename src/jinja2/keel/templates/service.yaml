@@ -1,0 +1,23 @@
+{%- if Values.service.enabled %}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.keel__fullname() }}
+  namespace: kube-system
+  labels:
+    app: {{ self.keel__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+spec:
+  type: {{ Values.service.type }}
+  ports:
+    - port: {{ Values.service.externalPort }}
+      targetPort: 9300
+      protocol: TCP
+      name: keel
+  selector:
+    app: {{ self.keel__name() }}
+    release: {{ Release.Name }}
+  sessionAffinity: None
+{%- endif %}

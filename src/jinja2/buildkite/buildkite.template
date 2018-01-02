@@ -1,0 +1,129 @@
+{%- if Values.registryCreds.gcrServiceAccountKey %}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.buildkite__fullname() }}-gcr
+  labels:
+    app: {{ self.buildkite__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+type: Opaque
+data:
+  service-account-key.json: |-
+    {{ Values.registryCreds.gcrServiceAccountKey }}
+{%- endif %}
+#---{%- if Values.registryCreds.dockerConfig %}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.buildkite__fullname() }}-registry
+  labels:
+    app: {{ self.buildkite__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+type: Opaque
+data:
+  .dockerconfigjson: |-
+    {{ Values.registryCreds.dockerConfig }}
+{%- endif %}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.buildkite__fullname() }}
+  labels:
+    app: {{ self.buildkite__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+type: Opaque
+data:
+  agent-token: {{ Values.agent.token | b64enc() }}
+{%- if Values.privateSshKey %}
+  agent-ssh: {{ Values.privateSshKey | b64enc() }}
+{%- endif %}
+#---apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ self.buildkite__fullname() }}
+  labels:
+    app: {{ self.buildkite__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+#---{%- if Values.agent.token %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.buildkite__fullname() }}
+  labels:
+    app: {{ self.buildkite__name() }}
+    chart: {{ Chart.Name }}-{{ Chart.Version | replace("+","_") }}
+    release: {{ Release.Name }}
+    heritage: {{ Release.Service }}
+spec:
+  replicas: {{ Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.buildkite__name() }}
+        release: {{ Release.Name }}
+    spec:
+      serviceAccount: {{ self.buildkite__fullname() }}
+      containers:
+        - name: {{ Chart.Name }}
+          image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+          imagePullPolicy: {{ Values.image.pullPolicy }}
+          securityContext:
+            privileged: true
+          env:
+            # BUILDKITE AGENT ENV VARS
+            - name: BUILDKITE_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.buildkite__fullname() }}
+                  key: agent-token
+            - name: BUILDKITE_AGENT_META_DATA
+              value: "{{ Values.agent.meta }}"
+            {%- if Values.privateSshKey %}
+            - name: SSH_PRIVATE_RSA_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ self.buildkite__fullname() }}
+                  key: agent-ssh
+            {%- endif %}
+            # EXTRA BUILDKITE AGENT ENV VARS
+{%- if Values.extraEnv %}{{ toYaml(Values.extraEnv) | indent(12) }}{%- endif %}
+          resources:
+{{ toYaml(Values.resources) | indent(12) }}
+          volumeMounts:
+            - name: var-run-docker-sock
+              mountPath: /var/run/docker.sock
+            {%- if Values.registryCreds.gcrServiceAccountKey %}
+            - name: service-key
+              mountPath: /etc/service_key
+            {%- endif %}
+            {%- if Values.registryCreds.dockerConfig %}
+            - name: docker-config
+              mountPath: /root/.docker
+            {%- endif %}
+      volumes:
+        - name: var-run-docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+        {%- if Values.registryCreds.gcrServiceAccountKey %}
+        - name: service-key
+          secret:
+            secretName: {{ self.buildkite__fullname() }}-gcr
+        {%- endif %}
+        {%- if Values.registryCreds.dockerConfig %}
+        - name: docker-config
+          secret:
+            secretName: {{ self.buildkite__fullname() }}-registry
+        {%- endif %}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+{%- endif %}

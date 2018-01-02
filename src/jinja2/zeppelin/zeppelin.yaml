@@ -1,0 +1,69 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zeppelin
+  labels:
+    app: zeppelin
+    chart: zeppelin-1.0.0
+    release: test
+    heritage: zeppelin
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    name: web
+  selector:
+    app: zeppelin
+    release: test
+
+---
+
+
+zeppelintest-zeppelin
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-zeppelin
+  labels:
+    app: zeppelin
+    chart: zeppelin-1.0.0
+    release: test
+    heritage: zeppelin
+spec:
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: zeppelin
+        release: test
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+        - name: zeppelin
+          image: dylanmei/zeppelin:0.7.2
+          ports:
+            - containerPort: 8080
+              name: web
+          env:
+            - name: ZEPPELIN_PORT
+              value: "8080"
+            - name: ZEPPELIN_JAVA_OPTS
+              value: >-
+                -Dspark.driver.memory=1g
+                -Dspark.executor.memory=1g
+          volumeMounts:
+          resources:
+            limits: {cpu: 2000m, memory: 4096Mi} 
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 20
+            timeoutSeconds: 1

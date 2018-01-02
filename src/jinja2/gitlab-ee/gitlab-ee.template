@@ -1,0 +1,229 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.gitlab-ee__fullname() }}
+  labels:
+    app: {{ self.gitlab-ee__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+data:
+  ## This is used by GitLab Omnibus as the primary means of configuration.
+  ## ref: https://gitlab.com/gitlab-org/omnibus-gitlab/blob/master/files/gitlab-config-template/gitlab.rb.template
+  ##
+  gitlab_omnibus_config: |
+    external_url ENV['EXTERNAL_URL'];
+    root_pass = ENV['GITLAB_ROOT_PASSWORD'];
+    gitlab_rails['initial_root_password'] = root_pass unless root_pass.to_s == '';
+    postgresql['enable'] = false;
+    gitlab_rails['db_host'] = ENV['DB_HOST'];
+    gitlab_rails['db_password'] = ENV['DB_PASSWORD'];
+    gitlab_rails['db_username'] = ENV['DB_USER'];
+    gitlab_rails['db_database'] = ENV['DB_DATABASE'];
+    redis['enable'] = false;
+    gitlab_rails['redis_host'] = ENV['REDIS_HOST'];
+    gitlab_rails['redis_password'] = ENV['REDIS_PASSWORD'];
+    unicorn['worker_processes'] = 2;
+    manage_accounts['enable'] = true;
+    manage_storage_directories['manage_etc'] = false;
+    gitlab_shell['auth_file'] = '/gitlab-data/ssh/authorized_keys';
+    git_data_dir '/gitlab-data/git-data';
+    gitlab_rails['shared_path'] = '/gitlab-data/shared';
+    gitlab_rails['uploads_directory'] = '/gitlab-data/uploads';
+    gitlab_ci['builds_directory'] = '/gitlab-data/builds';
+#---{%- if Values.persistence.gitlabData.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.gitlab-ee__fullname() }}-data
+  annotations:
+  {%- if Values.persistence.gitlabData.storageClass %}
+    volume.beta.kubernetes.io/storage-class: {{ Values.persistence.gitlabData.storageClass | quote() }}
+  {%- else %}
+    volume.alpha.kubernetes.io/storage-class: default
+  {%- endif %}
+spec:
+  accessModes:
+    - {{ Values.persistence.gitlabData.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.gitlabData.size | quote() }}
+{%- endif %}
+#---{%- if Values.persistence.gitlabEtc.enabled %}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.gitlab-ee__fullname() }}-etc
+  annotations:
+  {%- if Values.persistence.gitlabEtc.storageClass %}
+    volume.beta.kubernetes.io/storage-class: {{ Values.persistence.gitlabEtc.storageClass | quote() }}
+  {%- else %}
+    volume.alpha.kubernetes.io/storage-class: default
+  {%- endif %}
+spec:
+  accessModes:
+    - {{ Values.persistence.gitlabEtc.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.gitlabEtc.size | quote() }}
+{%- endif %}
+#---apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.gitlab-ee__fullname() }}
+  labels:
+    app: {{ self.gitlab-ee__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.gitlabRootPassword %}
+  # Defaulting to a non-sensical value to silence b64enc warning. We'll never
+  # actually use this default due to the if statement.
+  gitlab-root-password: {{ Values.gitlabRootPassword | default("ignore", true) | b64enc() | quote() }}
+  {%- endif %}
+  db-user: {{ Values.postgresql.postgresUser | b64enc() | quote() }}
+  db-password: {{ Values.postgresql.postgresPassword | b64enc() | quote() }}
+  redis-password: {{ Values.redis.redisPassword | b64enc() | quote() }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.gitlab-ee__fullname() }}
+  labels:
+    app: {{ self.gitlab-ee__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - name: ssh
+    port: {{ Values.sshPort | int() }}
+    targetPort: ssh
+  - name: http
+    port: {{ Values.httpPort | int() }}
+    targetPort: http
+  - name: https
+    port: {{ Values.httpsPort | int() }}
+    targetPort: https
+  selector:
+    app: {{ self.gitlab-ee__fullname() }}
+#---{%- if Values.externalUrl %}
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.gitlab-ee__fullname() }}
+  labels:
+    app: {{ self.gitlab-ee__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.gitlab-ee__fullname() }}
+    spec:
+      containers:
+      - name: {{ self.gitlab-ee__fullname() }}
+        image: {{ Values.image }}
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        ## General GitLab Configs
+        ##
+        # This is a free-form env var that GitLab Omnibus uses to configure
+        # everything. We're passing this in from a configmap and pulling some
+        # of the values from the env vars defined below. This is done to
+        # avoid leaving secrets visible in kubectl.
+        - name: GITLAB_OMNIBUS_CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: {{ self.gitlab-ee__fullname() }}
+              key: gitlab_omnibus_config
+        - name: GITLAB_ROOT_PASSWORD
+        {%- if Values.gitlabRootPassword %}
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.gitlab-ee__fullname() }}
+              key: gitlab-root-password
+        {%- endif %}
+        - name: EXTERNAL_URL
+          value: {{ Values.externalUrl | default("", true) | quote() }}
+        ## DB configuration
+        ##
+        - name: DB_HOST
+          value: {{ self.gitlab-ee__postgresql__fullname() }}
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.gitlab-ee__fullname() }}
+              key: db-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.gitlab-ee__fullname() }}
+              key: db-password
+        - name: DB_DATABASE
+          value: {{ Values.postgresql.postgresDatabase | quote() }}
+        ## Redis configuration
+        ##
+        - name: REDIS_HOST
+          value: {{ self.gitlab-ee__redis__fullname() }}
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.gitlab-ee__fullname() }}
+              key: redis-password
+        ports:
+        - name: ssh
+          containerPort: 22
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /help
+            port: http
+          # This pod takes a very long time to start up. Be cautious when
+          # lowering this value to avoid Pod death during startup.
+          initialDelaySeconds: 200
+          timeoutSeconds: 1
+          periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 10
+        readinessProbe:
+          httpGet:
+            path: /help
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 1
+          periodSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        volumeMounts:
+        - name: gitlab-etc
+          mountPath: /etc/gitlab
+        - name: gitlab-data
+          mountPath: /gitlab-data
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+      - name: gitlab-etc
+      {%- if Values.persistence.gitlabEtc.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.gitlab-ee__fullname() }}-etc
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+      - name: gitlab-data
+      {%- if Values.persistence.gitlabData.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.gitlab-ee__fullname() }}-data
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+{%- else %}
+{%- endif %}

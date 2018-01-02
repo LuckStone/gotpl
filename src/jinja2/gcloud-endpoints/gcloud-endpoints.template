@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+spec:
+  ports:
+{%- if (Values.httpPort) %}
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+{%- elif ( not  Values.http2Port) and ( not  Values.sslPort) %}
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+{%- endif %}
+{%- if (Values.http2Port) %}
+  - port: 81
+    targetPort: http2
+    protocol: TCP
+    name: http2
+{%- endif %}
+{%- if (Values.sslPort) %}
+  - port: 443
+    targetPort: https
+    protocol: TCP
+    name: https
+{%- endif %}
+  selector:
+    app: {{ self.fullname() }}
+  type: {{ Values.serviceType }}
+
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      containers:
+        - name: endpoints
+          image: "{{ Values.image }}"
+          imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+          args: [
+{%- if (Values.httpPort) %}
+            "--http_port", {{ Values.httpPort | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.http2Port) %}
+            "--http2_port", {{ Values.http2Port | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.sslPort) %}
+            "--ssl_port", {{ Values.sslPort | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.backend) %}
+            "--backend", {{ Values.backend | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.service) %}
+            "--service", {{ Values.service | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.version) %}
+            "--version", {{ Values.version | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.serviceAccountKey) %}
+            "--service_account_key", {{ Values.serviceAccountKey | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.nginxConfig) %}
+            "--nginx_config", {{ Values.nginxConfig | default("", true) | quote() }},
+{%- endif %}
+{%- if (Values.statusPort) %}
+            "--status_port", {{ Values.statusPort | default("", true) | quote() }},
+{%- endif %}
+          ]
+          ports:
+{%- if (Values.httpPort) %}
+            - containerPort: {{ Values.httpPort | default("0", true) }}
+              name: http
+{%- elif ( not  Values.http2Port) and ( not  Values.sslPort) %}
+            - containerPort: 8080
+              name: http
+{%- endif %}
+{%- if (Values.http2Port) %}
+            - containerPort: {{ Values.http2Port | default("0", true) }}
+              name: http2
+{%- endif %}
+{%- if (Values.sslPort) %}
+            - containerPort: {{ Values.sslPort | default("0", true) }}
+              name: https
+{%- endif %}
+{%- if (Values.statusPort) %}
+            - containerPort: {{ Values.statusPort | default("0", true) }}
+              name: status
+          livenessProbe:
+            httpGet:
+              path: /endpoints_status
+              port: {{ Values.statusPort | default("0", true) }}
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+          readinessProbe:
+            httpGet:
+              path: /endpoints_status
+              port: {{ Values.statusPort | default("0", true) }}
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+{%- endif %}
+          resources:
+            {{ include "toYaml" Values.resources | indent(12) }}

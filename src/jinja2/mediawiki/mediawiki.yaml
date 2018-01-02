@@ -1,0 +1,165 @@
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-mediawiki-apache
+  labels:
+    app: test-mediawiki
+    chart: "mediawiki-0.5.0"
+    release: "test"
+    heritage: "mediawiki"
+  annotations:
+    volume.alpha.kubernetes.io/storage-class: default
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "1Gi"
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-mediawiki-mediawiki
+  labels:
+    app: test-mediawiki
+    chart: "mediawiki-0.5.0"
+    release: "test"
+    heritage: "mediawiki"
+  annotations:
+    volume.alpha.kubernetes.io/storage-class: default
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "8Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-mediawiki
+  labels:
+    app: test-mediawiki
+    chart: "mediawiki-0.5.0"
+    release: "test"
+    heritage: "mediawiki"
+type: Opaque
+data:
+  mediawiki-password: "CmVsdGpyb3pneGkK"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-mediawiki
+  labels:
+    app: test-mediawiki
+    chart: "mediawiki-0.5.0"
+    release: "test"
+    heritage: "mediawiki"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: test-mediawiki
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-mediawiki
+  labels:
+    app: test-mediawiki
+    chart: "mediawiki-0.5.0"
+    release: "test"
+    heritage: "mediawiki"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-mediawiki
+    spec:
+      containers:
+      - name: test-mediawiki
+        image: "bitnami/mediawiki:1.29.1-r0"
+        imagePullPolicy: ""
+        env:
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: MARIADB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: MEDIAWIKI_USERNAME
+          value: "user"
+        - name: MEDIAWIKI_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mediawiki
+              key: mediawiki-password
+        - name: MEDIAWIKI_EMAIL
+          value: "user@example.com"
+        - name: MEDIAWIKI_WIKI_NAME
+          value: "My Wiki"
+        - name: SMTP_HOST_ID
+          value: ""
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mediawiki
+              key: smtp-password
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 120
+        readinessProbe:
+          httpGet:
+            path: /index.php
+            port: http
+          initialDelaySeconds: 30
+        resources:
+          requests: {cpu: 300m, memory: 512Mi}
+        volumeMounts:
+        - name: mediawiki-data
+          mountPath: /bitnami/mediawiki
+        - name: apache-data
+          mountPath: /bitnami/apache
+      volumes:
+      - name: mediawiki-data
+        persistentVolumeClaim:
+          claimName: test-mediawiki-mediawiki
+      - name: apache-data
+        persistentVolumeClaim:
+          claimName: test-mediawiki-apache

@@ -1,0 +1,161 @@
+{%- if Values.rbac.create %}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ self.fullname() }}
+subjects:
+- kind: ServiceAccount
+  name: {{ self.fullname() }}
+  namespace: {{ Release.Namespace }}
+{%- endif %}
+#---{%- if Values.rbac.create %}
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+rules:
+- apiGroups:
+  - extensions
+  resources:
+  - thirdpartyresources
+  verbs: ["get", "create", "list"]
+- apiGroups:
+  - voyager.appscode.com
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - servicemonitors
+  verbs: ["get", "create", "update"]
+- apiGroups:
+  - extensions
+  resources:
+  - deployments
+  - daemonsets
+  - ingresses
+  verbs: ["*"]
+- apiGroups: [""]
+  resources:
+  - replicationcontrollers
+  - services
+  - endpoints
+  - configmaps
+  verbs: ["*"]
+- apiGroups: [""]
+  resources:
+  - secrets
+  verbs: ["get", "list", "watch", "create", "update"]
+- apiGroups: [""]
+  resources:
+  - namespaces
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - events
+  verbs: ["create"]
+- apiGroups: [""]
+  resources:
+  - pods
+  verbs: ["list", "watch", "delete"]
+- apiGroups: [""]
+  resources:
+  - nodes
+  verbs: ["list", "watch", "get"]
+- apiGroups: [""]
+  resources:
+  - serviceaccounts
+  verbs: ["get", "create", "delete"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources:
+  - roles
+  - rolebindings
+  verbs: ["get", "create", "delete"]
+{%- endif %}
+#---{%- if Values.rbac.create %}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+{%- endif %}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: "{{ self.name() }}"
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  ports:
+  - name: http
+    port: 56790
+    targetPort: http
+  selector:
+    app: "{{ self.name() }}"
+    release: "{{ Release.Name }}"
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: "{{ self.name() }}"
+    heritage: "{{ Release.Service }}"
+    release: "{{ Release.Name }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: "{{ self.name() }}"
+        release: "{{ Release.Name }}"
+    spec:
+      serviceAccountName: {%- if Values.rbac.create %}{{ self.fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+      containers:
+      - name: operator
+        image: {{ Values.image }}:{{ Values.imageTag }}
+        args:
+        - run
+        - --cloud-provider={{ Values.cloudProvider }}
+        - --cloud-config={{ Values.cloudConfig }}
+        - --v={{ Values.logLevel }}
+        - --rbac={{ Values.rbac.create }}
+        ports:
+        - containerPort: 56790
+          name: http
+          protocol: TCP
+{%- if Values.persistence.enabled %}
+        volumeMounts:
+          - mountPath: {{ Values.cloudConfig | quote() }}
+            name: cloudconfig
+            readOnly: true
+      volumes:
+        - hostPath:
+            path: {{ Values.persistence.hostPath | quote() }}
+          name: cloudconfig
+{%- endif -%}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+{%- endif -%}

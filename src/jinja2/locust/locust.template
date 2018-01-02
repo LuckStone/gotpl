@@ -1,0 +1,158 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.locust__worker-configmap() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: {{ self.locust__fullname() }}
+data:
+{{ (.Files.Glob "tasks/*").AsConfig | indent(2) }}
+#---apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.locust__master-svc() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: {{ self.locust__fullname() }}
+    component: "master"
+spec:
+  type: {{ Values.service.type }}
+  ports:
+  - name: {{ Values.service.name }}
+    port: {{ Values.service.externalPort }}
+    targetPort: {{ Values.service.internalPort }}
+    nodePort: {{ Values.service.nodePort }}
+    protocol: TCP
+  - name: master-p1
+    port: 5557
+    protocol: TCP
+    targetPort: 5557
+  - name: master-p2
+    port: 5558
+    protocol: TCP
+    targetPort: 5558
+  selector:
+    app: {{ self.locust__fullname() }}
+    component: "master"
+  sessionAffinity: None
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.locust__master() }}
+  labels:
+    app: {{ self.locust__fullname() }}
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    component: master
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ Values.master.maxSurge | default(1, true) }}
+      maxUnavailable: {{ Values.master.maxUnavailable | default(1, true) }}
+  template:
+    metadata:
+      labels:
+        release: {{ Release.Name | quote() }}
+        app: {{ self.locust__fullname() }}
+        component: "master"
+    spec:
+      containers:
+      - name: locust
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        resources:
+{{ toYaml(Values.worker.resources) | indent(10) }}
+        env:
+        {%- for key, value in Values.master.config.iteritems() %}
+        - name: {{ key | upper() | replace("-","_") }}
+          value: {{ value | quote() }}
+        {%- endfor %}
+        - name: LOCUST_MODE
+          value: "master"
+        - name: LOCUST_SCRIPT
+          value: {{ Values.worker.config | index("locust-script")| quote() }}
+        ports:
+        - containerPort: {{ Values.service.internalPort }}
+          name: loc-master-web
+          protocol: TCP
+        - containerPort: 5557
+          name: loc-master-p1
+          protocol: TCP
+        - containerPort: 5558
+          name: loc-master-p2
+          protocol: TCP
+        volumeMounts:
+          - name: locust-tasks
+            mountPath: /locust-tasks/
+        livenessProbe:
+          periodSeconds: 30
+          httpGet:
+            path: /
+            port: {{ Values.service.internalPort }}
+        readinessProbe:
+          periodSeconds: 30
+          httpGet:
+            path: /
+            port: {{ Values.service.internalPort }}
+      volumes:
+      - name: "locust-tasks"
+        configMap:
+          name: {{ self.locust__worker-configmap() }}
+      restartPolicy: Always
+#---apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.locust__worker() }}
+  labels:
+    heritage: {{ Release.Service | quote() }}
+    release: {{ Release.Name | quote() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    app: {{ self.locust__fullname() }}
+    component: worker
+spec:
+  replicas: {{ Values.worker.replicaCount | default(2, true) }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ Values.worker.maxSurge | default(1, true) }}
+      maxUnavailable: {{ Values.worker.maxUnavailable | default(1, true) }}
+  template:
+    metadata:
+      labels:
+        app: {{ self.locust__fullname() }}
+        component: worker
+    spec:
+      containers:
+      - name: locust
+        image: "{{ Values.image.repository }}:{{ Values.image.tag }}"
+        imagePullPolicy: {{ Values.image.pullPolicy }}
+        volumeMounts:
+          - name: locust-tasks
+            mountPath: /locust-tasks/
+        env:
+        {%- for key, value in Values.worker.config.iteritems() %}
+        - name: {{ key | upper() | replace("-","_") }}
+          value: {{ value | quote() }}
+        {%- endfor %}
+        - name: LOCUST_MODE
+          value: "worker"
+        - name: LOCUST_MASTER
+          value: {{ self.locust__master-svc() }}
+        - name: LOCUST_MASTER_WEB
+          value: "{{ Values.service.internalPort }}"
+        - name: TARGET_HOST
+          value: {{ Values.master.config | index("target-host")| quote() }}
+        resources:
+{{ toYaml(Values.worker.resources) | indent(10) }}
+      restartPolicy: Always
+      volumes:
+        - name: "locust-tasks"
+          configMap:
+            name: {{ self.locust__worker-configmap() }}

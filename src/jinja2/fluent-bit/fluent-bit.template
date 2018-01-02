@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.fluent-bit__fullname() }}-config
+  labels:
+    app: {{ self.fluent-bit__fullname() }}
+data:
+  fluent-bit.conf: |-
+    [SERVICE]
+        Flush        1
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+
+    [INPUT]
+        Name             tail
+        Path             /var/log/containers/*.log
+        Parser           docker
+        Tag              kube.*
+        Refresh_Interval 5
+        Mem_Buf_Limit    5MB
+        Skip_Long_Lines  On
+
+    [FILTER]
+        Name   kubernetes
+        Match  kube.*
+
+{%- if Values.backend.type=="test" %}
+    [OUTPUT]
+        Name  file
+        Match *
+        Path /tmp/fluent-bit.log
+{%- elif Values.backend.type=="forward" %}
+    [OUTPUT]
+        Name          forward
+        Match         *
+        Host          {{ Values.backend.forward.host }}
+        Port          {{ Values.backend.forward.port }}
+        Retry_Limit False
+{%- elif Values.backend.type=="es" %}
+    [OUTPUT]
+        Name  es
+        Match *
+        Host  {{ Values.backend.es.host }}
+        Port  {{ Values.backend.es.port }}
+        Logstash_Format On
+        Retry_Limit False
+{%- endif %}
+#---apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  labels:
+    app: {{ self.fluent-bit__fullname() }}
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ self.fluent-bit__fullname() }}
+    spec:
+      containers:
+      - name: fluent-bit
+        image: "{{ Values.image.fluent_bit.repository }}:{{ Values.image.fluent_bit.tag }}"
+        imagePullPolicy: "{{ Values.image.pullPolicy }}"
+        env:
+{{ toYaml(Values.env) | indent(10) }}
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+        volumeMounts:
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+        - name: config
+          mountPath: /fluent-bit/etc/fluent-bit.conf
+          subPath: fluent-bit.conf
+{%- if Values.on_minikube %}
+        - name: mnt
+          mountPath: /mnt
+          readOnly: true
+{%- endif %}
+      terminationGracePeriodSeconds: 10
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+    {%- endif %}
+    {%- if Values.tolerations %}
+      tolerations:
+{{ toYaml(Values.tolerations) | indent(8) }}
+    {%- endif %}
+      volumes:
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+      - name: config
+        configMap:
+          name: {{ self.fluent-bit__fullname() }}-config
+{%- if Values.on_minikube %}
+      - name: mnt
+        hostPath:
+          path: /mnt
+{%- endif %}

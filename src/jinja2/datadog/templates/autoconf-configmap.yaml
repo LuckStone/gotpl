@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ self.datadog__autoconf__fullname() }}
+  labels:
+    app: {{ self.datadog__autoconf__fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+data:
+{%- if Values.datadog.autoconf %}
+{{ toYaml(Values.datadog.autoconf) | indent(2) }}
+{%- endif -%}

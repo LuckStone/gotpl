@@ -1,0 +1,47 @@
+
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  labels:
+    app: kube2iam
+    chart: kube2iam-0.6.0
+    heritage: kube2iam
+    release: test
+  name: test-kube2iam
+spec:
+  template:
+    metadata:
+      labels:
+        app: kube2iam
+        release: test
+    spec:
+      containers:
+        - name: kube2iam
+          image: "jtblin/kube2iam:0.7.0"
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - --host-interface=docker0
+            - --iptables=False
+          env:
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          ports:
+            - containerPort: 8181
+          resources:
+            {}
+      hostNetwork: true
+      serviceAccountName:"default"
+      tolerations:
+        []
+  updateStrategy:
+    type: OnDelete
+
+
+---
+

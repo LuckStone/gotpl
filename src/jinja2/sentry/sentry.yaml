@@ -1,0 +1,317 @@
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+ name: test-sentry
+ labels:
+    app: test-sentry
+    chart: "sentry-0.1.3"
+    release: "test"
+    heritage: "sentry"
+ annotations:
+spec:
+  rules:
+    - host: sentry.local
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: test-sentry
+              servicePort: 9000
+
+---
+
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: test-sentry
+  labels:
+    app: test-sentry
+    chart: "sentry-0.1.3"
+    release: "test"
+    heritage: "sentry"
+spec:
+  accessModes:
+    - "ReadWriteOnce"
+  resources:
+    requests:
+      storage: "10Gi"
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-sentry
+  labels:
+    app: test-sentry
+    chart: "sentry-0.1.3"
+    release: "test"
+    heritage: "sentry"
+type: Opaque
+data:
+  sentry-secret: "Cm56cHJrcHh0b3ZoaHdkanRvZWl3aGdwdHJpdHdlY3B6emRtdWRsa3AK"
+  smtp-password: ""
+  user-password: "CmJkdmltYWxmZ2hqY3BzdnAK"
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-sentry
+  labels:
+    app: test-sentry
+    chart: "sentry-0.1.3"
+    release: "test"
+    heritage: "sentry"
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 9000
+    targetPort: 9000
+    protocol: TCP
+    name: sentry
+  selector:
+    app: test-sentry
+    role: web
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-sentry-cron
+  labels:
+    app: test-sentry
+    chart: "sentry-0.1.3"
+    release: "test"
+    heritage: "sentry"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-sentry
+        release: "test"
+        role: cron
+    spec:
+      containers:
+      - name: sentry-cron
+        image: "sentry:8.20"
+        imagePullPolicy: IfNotPresent
+        args: ["run", "cron"]
+        ports:
+        - containerPort: 9000
+        env:
+        - name: SENTRY_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: test-sentry
+              key: sentry-secret
+        - name: SENTRY_DB_USER
+          value: "sentry"
+        - name: SENTRY_DB_NAME
+          value: "sentry"
+        - name: SENTRY_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-postgresql
+              key: postgres-password
+        - name: SENTRY_POSTGRES_HOST
+          value: test-postgresql
+        - name: SENTRY_POSTRGES_PORT
+          value: "5432"
+        - name: SENTRY_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-redis
+              key: redis-password
+        - name: SENTRY_REDIS_HOST
+          value: test-redis
+        - name: SENTRY_REDIS_PORT
+          value: "6379"
+        - name: SENTRY_EMAIL_HOST
+          value: "smtp"
+        - name: SENTRY_EMAIL_PORT
+          value: "25"
+        - name: SENTRY_EMAIL_USER
+          value: ""
+        - name: SENTRY_EMAIL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-sentry
+              key: smtp-password
+        resources:
+            limits: {cpu: 200m, memory: 200Mi}
+            requests: {cpu: 100m, memory: 100Mi}
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-sentry-web
+  labels:
+    app: test-sentry
+    chart: "sentry-0.1.3"
+    release: "test"
+    heritage: "sentry"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-sentry
+        release: "test"
+        role: web
+    spec:
+      containers:
+      - name: sentry-web
+        image: "sentry:8.20"
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9000
+        env:
+        - name: SENTRY_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: test-sentry
+              key: sentry-secret
+        - name: SENTRY_DB_USER
+          value: "sentry"
+        - name: SENTRY_DB_NAME
+          value: "sentry"
+        - name: SENTRY_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-postgresql
+              key: postgres-password
+        - name: SENTRY_POSTGRES_HOST
+          value: test-postgresql
+        - name: SENTRY_POSTRGES_PORT
+          value: "5432"
+        - name: SENTRY_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-redis
+              key: redis-password
+        - name: SENTRY_REDIS_HOST
+          value: test-redis
+        - name: SENTRY_REDIS_PORT
+          value: "6379"
+        - name: SENTRY_EMAIL_HOST
+          value: "smtp"
+        - name: SENTRY_EMAIL_PORT
+          value: "25"
+        - name: SENTRY_EMAIL_USER
+          value: ""
+        - name: SENTRY_EMAIL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-sentry
+              key: smtp-password
+        volumeMounts:
+        - mountPath: /var/lib/sentry/files
+          name: sentry-data
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /_health/
+            port: 9000
+            scheme: HTTP
+          initialDelaySeconds: 50
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 2
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /_health/
+            port: 9000
+            scheme: HTTP
+          initialDelaySeconds: 50
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 2
+        resources:
+            limits: {cpu: 500m, memory: 500Mi}
+            requests: {cpu: 300m, memory: 300Mi}
+      volumes:
+      - name: sentry-data
+        persistentVolumeClaim:
+          claimName: test-sentry
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-sentry-worker
+  labels:
+    app: test-sentry
+    chart: "sentry-0.1.3"
+    release: "test"
+    heritage: "sentry"
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: test-sentry
+        release: "test"
+        role: worker
+    spec:
+      containers:
+      - name: sentry-workers
+        image: "sentry:8.20"
+        imagePullPolicy: IfNotPresent
+        args: ["run", "worker"]
+        ports:
+        - containerPort: 9000
+        env:
+        - name: SENTRY_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: test-sentry
+              key: sentry-secret
+        - name: SENTRY_DB_USER
+          value: "sentry"
+        - name: SENTRY_DB_NAME
+          value: "sentry"
+        - name: SENTRY_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-postgresql
+              key: postgres-password
+        - name: SENTRY_POSTGRES_HOST
+          value: test-postgresql
+        - name: SENTRY_POSTGRES_PORT
+          value: "5432"
+        - name: SENTRY_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-redis
+              key: redis-password
+        - name: SENTRY_REDIS_HOST
+          value: test-redis
+        - name: SENTRY_REDIS_PORT
+          value: "6379"
+        - name: SENTRY_EMAIL_HOST
+          value: "smtp"
+        - name: SENTRY_EMAIL_PORT
+          value: "25"
+        - name: SENTRY_EMAIL_USER
+          value: ""
+        - name: SENTRY_EMAIL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-sentry
+              key: smtp-password
+        resources:
+            limits: {cpu: 300m, memory: 500Mi}
+            requests: {cpu: 100m, memory: 100Mi}

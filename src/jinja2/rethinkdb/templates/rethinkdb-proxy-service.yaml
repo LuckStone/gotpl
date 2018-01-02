@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.rethinkdb__fullname() }}-proxy
+  labels:
+    app: {{ self.rethinkdb__name() }}-proxy
+    chart: {{ Chart.Name }}-{{ Chart.Version }}
+    heritage: {{ Release.Service }}
+    release: {{ Release.Name }}
+  annotations:
+  {%- if Values.proxy.serviceAnnotations %}
+{{ toYaml(Values.proxy.serviceAnnotations) | indent(4) }}
+  {%- endif %}
+spec:
+  type: {{ Values.proxy.service.type }}
+  clusterIP: "{{ Values.proxy.service.clusterIP }}"
+{%- if Values.proxy.service.externalIPs %}
+  externalIPs:
+{{ toYaml(Values.proxy.service.externalIPs) | indent(4) }}
+{%- endif %}
+{%- if Values.proxy.service.loadBalancerIP %}
+  loadBalancerIP: "{{ Values.proxy.service.loadBalancerIP }}"
+{%- endif %}
+{%- if Values.proxy.service.loadBalancerSourceRanges %}
+  loadBalancerSourceRanges:
+{{ toYaml(Values.proxy.service.loadBalancerSourceRanges) | indent(4) }}
+{%- endif %}
+  ports:
+    - port: {{ Values.ports.driver }}
+      targetPort: driver
+  selector:
+    app: {{ self.rethinkdb__name() }}-proxy
+    release: {{ Release.Name }}
