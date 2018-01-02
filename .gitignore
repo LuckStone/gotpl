@@ -1,0 +1,10 @@
+*.md5
+*.yml
+*.pyc
+*.log
+*.prefs
+*.git
+.ropeproject
+.pydevproject
+.project
+.settings
