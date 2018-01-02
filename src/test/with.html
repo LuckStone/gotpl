@@ -1,0 +1,14 @@
+        {%- set item = Values.resizer %}
+        image: "{{ item.image.repository }}:{{ item.image.tag }}"
+        imagePullPolicy: {{ item.image.pullPolicy }}
+        resources:
+{{ toYaml(item.resources) | indent(12) }}
+        env:
+          - name: MY_POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+          - name: MY_POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace

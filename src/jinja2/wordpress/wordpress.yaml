@@ -1,0 +1,168 @@
+
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+ name: test-wordpress
+ labels:
+    app: test-wordpress
+    chart: "wordpress-0.6.13"
+    release: "test"
+    heritage: "wordpress"spec:
+  rules:
+    - host: wordpress.local
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: test-wordpress
+              servicePort: http
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-wordpress
+  labels:
+    app: test-wordpress
+    chart: "wordpress-0.6.13"
+    release: "test"
+    heritage: "wordpress"
+type: Opaque
+data:
+  wordpress-password: "MTIzNDU2"
+  smtp-password: ""
+
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-wordpress
+  labels:
+    app: test-wordpress
+    chart: "wordpress-0.6.13"
+    release: "test"
+    heritage: "wordpress"
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: test-wordpress
+
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: test-wordpress
+  labels:
+    app: test-wordpress
+    chart: "wordpress-0.6.13"
+    release: "test"
+    heritage: "wordpress"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: test-wordpress
+    spec:
+      containers:
+      - name: test-wordpress
+        image: "192.168.18.250:5002/library/wordpress:4.8.2-r0"
+        imagePullPolicy: "IfNotPresent"
+        env:
+        - name: ALLOW_EMPTY_PASSWORD
+          value: "yes"
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-root-password
+        - name: MARIADB_HOST
+          value: test-mariadb
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: WORDPRESS_DATABASE_NAME
+          value: "bitnami_wordpress"
+        - name: WORDPRESS_DATABASE_USER
+          value: "bn_wordpress"
+        - name: WORDPRESS_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-mariadb
+              key: mariadb-password
+        - name: WORDPRESS_USERNAME
+          value: "user"
+        - name: WORDPRESS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-wordpress
+              key: wordpress-password
+        - name: WORDPRESS_EMAIL
+          value: "user@example.com"
+        - name: WORDPRESS_FIRST_NAME
+          value: "FirstName"
+        - name: WORDPRESS_LAST_NAME
+          value: "LastName"
+        - name: WORDPRESS_BLOG_NAME
+          value: "User's Blog!"
+        - name: SMTP_HOST
+          value: ""
+        - name: SMTP_PORT
+          value: ""
+        - name: SMTP_USER
+          value: ""
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: test-wordpress
+              key: smtp-password
+        - name: SMTP_USERNAME
+          value: ""
+        - name: SMTP_PROTOCOL
+          value: ""
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /wp-login.php
+            port: http
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /wp-login.php
+            port: http
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /bitnami/apache
+          name: wordpress-data
+          subPath: apache
+        - mountPath: /bitnami/wordpress
+          name: wordpress-data
+          subPath: wordpress
+        - mountPath: /bitnami/php
+          name: wordpress-data
+          subPath: php
+        resources:
+          limits: {cpu: 1000m, memory: 1024Mi}
+          requests: {cpu: 300m, memory: 512Mi}
+      volumes:
+      - name: wordpress-data
+        emptyDir: {}

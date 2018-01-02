@@ -1,0 +1,7 @@
+{{- "%s-%s" | format(Release.Name,name) | trunc(63) | trimSuffix("-") -}}
+
+{%- if ( "%s" | format(Values.minecraftServer.eula) )!="FALSE" %}
+apiVersion: extensions/v1beta1
+{%- endif -%}
+
+{{- replace("+", "_", Chart.Version) | printf("%s-%s", Chart.Name) -}}

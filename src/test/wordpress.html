@@ -1,0 +1,246 @@
+{# vim: set filetype=mustache: #}
+{#
+Expand the name of the chart.
+#}
+{% block name -%}
+{{ Chart.Name | default(Values.nameOverride, boolean=true) | trunc(63) | trimSuffix("-") -}}
+{% endblock -%}
+
+{#
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+#}
+{% block fullname -%}
+{% set name = Chart.Name | default(Values.nameOverride, boolean=true) -%}
+{{ "%s-%s" | format(Release.Name,name) | trunc(63) | trimSuffix("-") -}}
+{% endblock -%}
+
+{#
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+#}
+{% block mariadb__fullname -%}
+{{ "%s-%s" | format(Release.Name,"mariadb") | trunc(63) | trimSuffix("-") -}}
+{% endblock -%}
+
+
+{% if Values.ingress.enabled -%}
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+ name: {{ self.fullname() }}
+ labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+ annotations:
+   {% for key, value in Values.ingress.annotations.iteritems() %}
+     {{ key }}: {{ value | quote() }}
+   {%- endfor %}
+spec:
+  rules:
+    - host: {{ Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: {{ self.fullname() }}
+              servicePort: 80
+{%- if Values.ingress.tls %}
+  tls:
+{{ toYaml(Values.ingress.tls) | indent(4) }}
+{% endif -%}
+{% endif -%}
+
+
+{% if Values.persistence.enabled -%}
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  accessModes:
+    - {{ Values.persistence.accessMode | quote() }}
+  resources:
+    requests:
+      storage: {{ Values.persistence.size | quote() }}
+{%- if Values.persistence.storageClass %}
+{%- if ("-"==Values.persistence.storageClass) %}
+  storageClassName: ""
+{%- else %}
+  storageClassName: "{{ Values.persistence.storageClass }}"
+{%- endif %}
+{%- endif %}
+{% endif -%}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+type: Opaque
+data:
+  {%- if Values.wordpressPassword %}
+  wordpress-password: {{ "" | default(Values.wordpressPassword, boolean=true) | b64enc() | quote() }}
+  {%- else %}
+  wordpress-password: {{ randAlphaNum(10) | b64enc() | quote() }}
+  {%- endif %}
+  smtp-password: {{ "" | default(Values.smtpPassword, boolean=true) | b64enc() | quote() }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  type: {{ Values.serviceType }}
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  - name: https
+    port: 443
+    targetPort: https
+  selector:
+    app: {{ self.fullname() }}
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ "" | default(Values.imagePullPolicy, boolean=true) | quote() }}
+        env:
+        - name: ALLOW_EMPTY_PASSWORD
+        {%- if Values.allowEmptyPassword %}
+          value: "yes"
+        {%- else %}
+          value: "no"
+        {%- endif %}
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: MARIADB_HOST
+          value: {{ self.mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: WORDPRESS_DATABASE_NAME
+          value: {{ "" | default(Values.mariadb.mariadbDatabase, boolean=true) | quote() }}
+        - name: WORDPRESS_DATABASE_USER
+          value: {{ "" | default(Values.mariadb.mariadbUser, boolean=true) | quote() }}
+        - name: WORDPRESS_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-password
+        - name: WORDPRESS_USERNAME
+          value: {{ "" | default(Values.wordpressUsername, boolean=true) | quote() }}
+        - name: WORDPRESS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: wordpress-password
+        - name: WORDPRESS_EMAIL
+          value: {{ "" | default(Values.wordpressEmail, boolean=true) | quote() }}
+        - name: WORDPRESS_FIRST_NAME
+          value: {{ "" | default(Values.wordpressFirstName, boolean=true) | quote() }}
+        - name: WORDPRESS_LAST_NAME
+          value: {{ "" | default(Values.wordpressLastName, boolean=true) | quote() }}
+        - name: WORDPRESS_BLOG_NAME
+          value: {{ "" | default(Values.wordpressBlogName, boolean=true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ "" | default(Values.smtpHost, boolean=true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ "" | default(Values.smtpPort, boolean=true) | quote() }}
+        - name: SMTP_USER
+          value: {{ "" | default(Values.smtpUser, boolean=true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: smtp-password
+        - name: SMTP_USERNAME
+          value: {{ "" | default(Values.smtpUsername, boolean=true) | quote() }}
+        - name: SMTP_PROTOCOL
+          value: {{ "" | default(Values.smtpProtocol, boolean=true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /wp-login.php
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /wp-login.php
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /bitnami/apache
+          name: wordpress-data
+          subPath: apache
+        - mountPath: /bitnami/wordpress
+          name: wordpress-data
+          subPath: wordpress
+        - mountPath: /bitnami/php
+          name: wordpress-data
+          subPath: php
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+      - name: wordpress-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {% endif -%}

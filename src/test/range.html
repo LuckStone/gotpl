@@ -1,0 +1,50 @@
+spec:
+  type: {{ Values.single.service.type }}
+  ports:
+  {%- for key, value in Values.single.config.inputs.iteritems() %}
+    {%- if key=="http_listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "http-listener"
+    {%- endif %}
+    {%- if key=="statsd" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "statsd"
+    {%- endif %}
+    {%- if key=="tcp-listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "tcp_listener"
+    {%- endif %}
+    {%- if key=="udp-listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "udp_listener"
+    {%- endif %}
+    {%- if key=="webhooks" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "webhooks"
+    {%- endif %}
+  {%- endfor %}
+
+
+
+command:
+  - ./cluster-autoscaler
+  - --cloud-provider=aws
+{%- for item in Values.autoscalingGroups %}
+  - --nodes={{ item.minSize }}:{{ item.maxSize }}:{{ item.name }}
+{%- endfor %}
+  - --scale-down-delay={{ Values.scaleDownDelay }}
+  - --skip-nodes-with-local-storage={{ Values.skipNodes.withLocalStorage }}
+  - --skip-nodes-with-system-pods={{ Values.skipNodes.withSystemPods }}
+  - --v=4
+{%- for key, value in Values.extraArgs.iteritems() %}
+  - --{{ key }}={{ value }}
+{%- endfor %}
+
+{%- for item in nodeCount %}
+- http://{{ self.minio__fullname() }}-{{ item }}.{{ self.minio__fullname() }}.{{ Release.Namespace }}.svc.cluster.local{{ Values.mountPath }}
+{%- endfor %}

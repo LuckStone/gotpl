@@ -1,0 +1,128 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ self.fullname() }}
+  labels:
+    app: {{ self.fullname() }}
+    chart: "{{ Chart.Name }}-{{ Chart.Version }}"
+    release: "{{ Release.Name }}"
+    heritage: "{{ Release.Service }}"
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ self.fullname() }}
+    spec:
+      containers:
+      - name: {{ self.fullname() }}
+        image: "{{ Values.image }}"
+        imagePullPolicy: {{ Values.imagePullPolicy | default("", true) | quote() }}
+        env:
+        - name: ALLOW_EMPTY_PASSWORD
+        {%- if Values.allowEmptyPassword %}
+          value: "yes"
+        {%- else %}
+          value: "no"
+        {%- endif %}
+        - name: MARIADB_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-root-password
+        - name: MARIADB_HOST
+          value: {{ self.mariadb__fullname() }}
+        - name: MARIADB_PORT_NUMBER
+          value: "3306"
+        - name: WORDPRESS_DATABASE_NAME
+          value: {{ Values.mariadb.mariadbDatabase | default("", true) | quote() }}
+        - name: WORDPRESS_DATABASE_USER
+          value: {{ Values.mariadb.mariadbUser | default("", true) | quote() }}
+        - name: WORDPRESS_DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.mariadb__fullname() }}
+              key: mariadb-password
+        - name: WORDPRESS_USERNAME
+          value: {{ Values.wordpressUsername | default("", true) | quote() }}
+        - name: WORDPRESS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: wordpress-password
+        - name: WORDPRESS_EMAIL
+          value: {{ Values.wordpressEmail | default("", true) | quote() }}
+        - name: WORDPRESS_FIRST_NAME
+          value: {{ Values.wordpressFirstName | default("", true) | quote() }}
+        - name: WORDPRESS_LAST_NAME
+          value: {{ Values.wordpressLastName | default("", true) | quote() }}
+        - name: WORDPRESS_BLOG_NAME
+          value: {{ Values.wordpressBlogName | default("", true) | quote() }}
+        - name: SMTP_HOST
+          value: {{ Values.smtpHost | default("", true) | quote() }}
+        - name: SMTP_PORT
+          value: {{ Values.smtpPort | default("", true) | quote() }}
+        - name: SMTP_USER
+          value: {{ Values.smtpUser | default("", true) | quote() }}
+        - name: SMTP_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ self.fullname() }}
+              key: smtp-password
+        - name: SMTP_USERNAME
+          value: {{ Values.smtpUsername | default("", true) | quote() }}
+        - name: SMTP_PROTOCOL
+          value: {{ Values.smtpProtocol | default("", true) | quote() }}
+        ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+        livenessProbe:
+          httpGet:
+            path: /wp-login.php
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          httpGet:
+            path: /wp-login.php
+          {%- if  not  Values.healthcheckHttps %}
+            port: http
+          {%- else %}
+            port: https
+            scheme: HTTPS
+          {%- endif %}
+          initialDelaySeconds: 30
+          timeoutSeconds: 3
+          periodSeconds: 5
+        volumeMounts:
+        - mountPath: /bitnami/apache
+          name: wordpress-data
+          subPath: apache
+        - mountPath: /bitnami/wordpress
+          name: wordpress-data
+          subPath: wordpress
+        - mountPath: /bitnami/php
+          name: wordpress-data
+          subPath: php
+        resources:
+{{ toYaml(Values.resources) | indent(10) }}
+      volumes:
+      - name: wordpress-data
+      {%- if Values.persistence.enabled %}
+        persistentVolumeClaim:
+          claimName: {{ self.fullname() }}
+      {%- else %}
+        emptyDir: {}
+      {%- endif %}
+    {%- if Values.nodeSelector %}
+      nodeSelector:
+{{ toYaml(Values.nodeSelector) | indent(8) }}
+      {%- endif -%}

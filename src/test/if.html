@@ -1,0 +1,86 @@
+serviceAccountName: {%- if Values.rbac.create %}{{ self.fullname() }}{%- else %}"{{ Values.rbac.serviceAccountName }}"{%- endif %}
+
+
+{%- if middleware.path %}path {{ middleware.path }}{%- endif %}
+
+{%- if Values.persistence.enabled and Values.persistence.drupal.hostPath and ( not  Values.persistence.drupal.existingClaim) -%}
+apiVersion: gggggggggggg
+{% endif -%}
+
+
+{%- if (Values.coscale.appId and Values.coscale.accessToken) and Values.coscale.templateId -%}
+apiVersion: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+{%- endif %}
+
+{%- if ((Values.Master.ServiceType=="NodePort") and ( not  ( empty  Values.Master.NodePort))) %}
+nodePort: {{ Values.Master.NodePort }}
+{%- endif %}
+
+
+spec:
+  type: {{ Values.single.service.type }}
+  ports:
+  {%- for key, value in Values.single.config.inputs.iteritems() %}
+    {%- if key=="http_listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "http-listener"
+    {%- endif %}
+    {%- if key=="statsd" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "statsd"
+    {%- endif %}
+    {%- if key=="tcp-listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "tcp_listener"
+    {%- endif %}
+    {%- if key=="udp-listener" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "udp_listener"
+    {%- endif %}
+    {%- if key=="webhooks" %}
+  - port: {{ trimPrefix ":" value.service_address | int64() }}
+    targetPort: {{ trimPrefix ":" value.service_address | int64() }}
+    name: "webhooks"
+    {%- endif %}
+  {%- endfor %}
+
+compress = {{ Values.gzip.enabled }}
+  {%- if Values.ssl.enabled and Values.ssl.enforced %}
+  [entryPoints.http.redirect]
+    entryPoint = "https"
+  {%- endif %}
+
+env:
+- name: ALLOW_EMPTY_PASSWORD
+{%- if Values.allowEmptyPassword %}
+  value: "yes"
+{%- else %}
+  value: "no"
+{%- endif %}
+
+[kubernetes]
+{%- if Values.kubernetes %}
+  {%- if Values.kubernetes.namespaces %}
+namespaces = [
+    {%- for idx, element in Values.kubernetes.namespaces.iteritems() %}
+        {%- if idx %}, {%- endif %}
+        {{- element | quote() }}
+    {%- endfor -%}
+    ]
+  {%- endif %}
+  {%- if Values.kubernetes.labelSelector %}
+labelselector = {{ Values.kubernetes.labelSelector | quote() }}
+  {%- endif %}
+{%- endif %}
+
+{%- block cockroachdb__networkPolicy__apiVersion -%}
+{%- if (Capabilities.KubeVersion.Minor>="4") and (Capabilities.KubeVersion.Minor<="6") -%}
+{{- "extensions/v1beta1" -}}
+{%- elif Capabilities.KubeVersion.Minor>="7" -%}
+{{- "networking.k8s.io/v1" -}}
+{%- endif -%}
+{%- endblock -%}
